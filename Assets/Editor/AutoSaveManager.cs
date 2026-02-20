@@ -57,11 +57,9 @@ public class AutoSaveManager : MonoBehaviour
             if (scene.isDirty)
             {
                 EditorSceneManager.SaveScene(scene);
-                Debug.Log($"[Autosave - {reason}] Scene saved at {DateTime.Now:HH:mm:ss}");
             }
             else
             {
-                Debug.Log($"[Autosave - {reason}] No changes to save at {DateTime.Now:HH:mm:ss}");
             }
 
             // Save all assets
@@ -75,38 +73,5 @@ public class AutoSaveManager : MonoBehaviour
         {
             isAutosaving = false;
         }
-    }
-
-    // Manual save menu item
-    [MenuItem("Tools/Autosave/Save Now")]
-    private static void ManualSave()
-    {
-        PerformAutosave("Manual");
-        lastSaveTime = DateTime.Now;
-    }
-
-    // Change interval menu items
-    [MenuItem("Tools/Autosave/Set Interval (1 min)")]
-    private static void SetInterval1Min()
-    {
-        autosaveInterval = 60f;
-        lastSaveTime = DateTime.Now;
-        Debug.Log("[Autosave] Interval set to 1 minute.");
-    }
-
-    [MenuItem("Tools/Autosave/Set Interval (2 min)")]
-    private static void SetInterval2Min()
-    {
-        autosaveInterval = 120f;
-        lastSaveTime = DateTime.Now;
-        Debug.Log("[Autosave] Interval set to 2 minutes.");
-    }
-
-    [MenuItem("Tools/Autosave/Set Interval (5 min)")]
-    private static void SetInterval5Min()
-    {
-        autosaveInterval = 300f;
-        lastSaveTime = DateTime.Now;
-        Debug.Log("[Autosave] Interval set to 5 minutes.");
     }
 }
