@@ -4,7 +4,10 @@ on:
   push:
     branches-ignore: [ main ]
   pull_request:
-    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -21,15 +24,26 @@ jobs:
           - StandaloneWindows64 # Build a Windows 64-bit standalone.
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
         with:
-          ref: ${{ github.event.pull_request != null && github.event.pull_request.head.sha || github.sha }}
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
           lfs: true
-      - uses: actions/cache@v3
+      - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request'
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: Cache Unity Library
+        uses: actions/cache@v4
         with:
           path: Library
-          key: Library-${{ matrix.targetPlatform }}
-          restore-keys: Library-
+          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Packages/manifest.json') }}
+          restore-keys: |
+            Library-${{ matrix.targetPlatform }}-
+            Library-
+
       - if: matrix.targetPlatform == 'Android'
         uses: jlumbroso/free-disk-space@v1.3.1
       - uses: game-ci/unity-builder@v4
@@ -40,7 +54,22 @@ jobs:
         with:
           targetPlatform: ${{ matrix.targetPlatform }}
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Build-${{ matrix.targetPlatform }}
           path: build/${{ matrix.targetPlatform }}
           retention-days: 1
+  
+  build-status:
+    name: Build Status
+    needs: buildForAllSupportedPlatforms
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check build result
+        run: |
+          if [ "${{ needs.buildForAllSupportedPlatforms.result }}" != "success" ]; then
+            echo "Build failed"
+            exit 1
+          fi
+          echo "Build passed successfully"
