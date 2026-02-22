@@ -23,8 +23,7 @@ public class PlayerController : MonoBehaviour
         rb.freezeRotation = true;
 
         // Lock the cursor (optional, since mouse is unused now)
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        // Cursor.lockState = CursorLockMode.Locked;
     }
 
     void Update()
