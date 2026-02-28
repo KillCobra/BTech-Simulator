@@ -1,5 +1,6 @@
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 
 /// <summary>
@@ -56,7 +57,35 @@ public class SceneLoader
         }
 
         CurrentSceneName = sceneName;
+
+        // Clean up duplicates caused by additive loading
+        CleanupDuplicates();
+
         Debug.Log($"[SceneLoader] Scene loaded: {sceneName}");
+    }
+
+    /// <summary>
+    /// After loading a scene additively, the new scene may bring its own
+    /// Camera (with AudioListener) and EventSystem. Unity only wants one
+    /// of each, so we destroy the extras — keeping the ones from _Boot.
+    /// </summary>
+    private static void CleanupDuplicates()
+    {
+        // Keep only the first AudioListener
+        var listeners = Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None);
+        for (int i = 1; i < listeners.Length; i++)
+        {
+            Debug.Log($"[SceneLoader] Destroying duplicate AudioListener on '{listeners[i].gameObject.name}'");
+            Object.Destroy(listeners[i]);
+        }
+
+        // Keep only the first EventSystem
+        var eventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None);
+        for (int i = 1; i < eventSystems.Length; i++)
+        {
+            Debug.Log($"[SceneLoader] Destroying duplicate EventSystem on '{eventSystems[i].gameObject.name}'");
+            Object.Destroy(eventSystems[i].gameObject);
+        }
     }
 
     /// <summary>

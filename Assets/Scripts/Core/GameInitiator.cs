@@ -120,13 +120,21 @@ public class GameInitiator : MonoBehaviour
             // player.SetPosition(saveData.playerPosition.ToVector3());
         }
 
-        SetProgress(0.9f, "Almost ready...");
+        SetProgress(0.85f, "Preparing player...");
 
-        // ─── Prepare individual systems ───
-        // player.SetPosition(spawnPoint);
-        // player.GiveStartingWeapon();
-        // enemySpawner.SpreadAroundPoint(player.transform.position);
-        // levelUI.SetLevelText(currentLevel);
+        // ─── Find and initialize the player in the loaded scene ───
+        var player = FindAnyObjectByType<PlayerController>();
+        if (player != null)
+        {
+            player.Initialize();
+            Debug.Log("[GameInitiator] Player initialized.");
+        }
+        else
+        {
+            Debug.LogWarning("[GameInitiator] No PlayerController found in scene.");
+        }
+
+        SetProgress(0.9f, "Almost ready...");
 
         // =============================================
         // STEP 6: START GAME – Hide loading, begin gameplay
@@ -134,6 +142,11 @@ public class GameInitiator : MonoBehaviour
         Debug.Log("[GameInitiator] Step 6: Starting game!");
 
         gameState.TransitionTo(GameState.Playing);
+
+        // Enable player movement now that the game is playing
+        if (player != null)
+            player.EnableMovement();
+
         SetProgress(1.0f, "Starting...");
 
         // Brief pause so user sees 100%

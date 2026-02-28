@@ -3,7 +3,8 @@
     "rootNamespace": "BTechSimulator.Tests.PlayMode",
     "references": [
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "BTechSimulator.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

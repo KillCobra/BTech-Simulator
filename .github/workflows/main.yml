@@ -263,5 +263,5 @@ jobs:
         with:
           name: Build-${{ matrix.buildMatrix.targetPlatform }}-${{ github.sha }}
           path: build/${{ matrix.buildMatrix.targetPlatform }}
-          retention-days: 7
+          retention-days: 1
           if-no-files-found: ignore
