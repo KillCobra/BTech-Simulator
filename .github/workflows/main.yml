@@ -1,10 +1,9 @@
 name: Unity Tests & Build
 
 on:
-  push:
-    branches-ignore: [ main ]               # test any branch push EXCEPT main
+  push:                                      # all branches: tests on non-main, build on main (merge)
   pull_request:
-    types: [opened, synchronize, reopened]  # gate merges into main
+    types: [opened, synchronize, reopened]   # gate merges into main
     branches: [ main ]
 
 permissions:
@@ -18,11 +17,11 @@ concurrency:
 
 jobs:
   # -------------------------------------------------------
-  # 1) PUSH: run tests in parallel (editmode + playmode) × shards
+  # 1) PUSH (non-main): run tests in parallel (editmode + playmode) x shards
   # -------------------------------------------------------
   test_on_push:
-    if: github.event_name == 'push'
-    name: Tests on push (${{ matrix.testMode }} · ${{ matrix.shard.name }}) · ${{ github.ref_name }}
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    name: Tests on push (${{ matrix.testMode }} - ${{ matrix.shard.name }}) - ${{ github.ref_name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -38,7 +37,7 @@ jobs:
       - name: Checkout pushed commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}             # exact pushed commit
+          ref: ${{ github.sha }}
           fetch-depth: 0
           lfs: true
 
@@ -68,7 +67,7 @@ jobs:
             echo "Unity version mismatch. Expected 6000.3.9f1"; cat ProjectSettings/ProjectVersion.txt; exit 1;
           }
 
-      - name: Run Unity tests (${{ matrix.testMode }} · ${{ matrix.shard.name }})
+      - name: Run Unity tests (${{ matrix.testMode }} - ${{ matrix.shard.name }})
         id: tests
         uses: game-ci/unity-test-runner@v4
         env:
@@ -80,7 +79,7 @@ jobs:
           testMode: ${{ matrix.testMode }}
           customParameters: ${{ matrix.shard.selector }}
           githubToken: ${{ secrets.GITHUB_TOKEN }}
-          checkName: "${{ matrix.testMode }} • ${{ matrix.shard.name }} Test Results"
+          checkName: "${{ matrix.testMode }} - ${{ matrix.shard.name }} Test Results"
 
       - name: Upload test artifacts (only on failure)
         if: failure()
@@ -96,7 +95,7 @@ jobs:
   # -----------------------------------------------------------------------
   pr_lookup:
     if: github.event_name == 'pull_request'
-    name: PR gate · lookup last push result
+    name: PR gate - lookup last push result
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.decide.outputs.should_run }}
@@ -135,7 +134,7 @@ jobs:
   pr_gate_reuse:
     if: github.event_name == 'pull_request' && needs.pr_lookup.outputs.should_run == 'false'
     needs: pr_lookup
-    name: PR gate · reuse prior result
+    name: PR gate - reuse prior result
     runs-on: ubuntu-latest
     steps:
       - name: Reuse PASS
@@ -151,7 +150,7 @@ jobs:
   pr_gate_fallback:
     if: github.event_name == 'pull_request' && needs.pr_lookup.outputs.should_run == 'true'
     needs: pr_lookup
-    name: PR gate · run tests (fallback) · ${{ matrix.testMode }} · ${{ matrix.shard.name }}
+    name: PR gate - run tests (fallback) - ${{ matrix.testMode }} - ${{ matrix.shard.name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -188,7 +187,7 @@ jobs:
             echo "Unity version mismatch. Expected 6000.3.9f1"; cat ProjectSettings/ProjectVersion.txt; exit 1;
           }
 
-      - name: Run Unity tests (${{ matrix.testMode }} · ${{ matrix.shard.name }})
+      - name: Run Unity tests (${{ matrix.testMode }} - ${{ matrix.shard.name }})
         id: tests
         uses: game-ci/unity-test-runner@v4
         env:
@@ -199,9 +198,8 @@ jobs:
           projectPath: .
           testMode: ${{ matrix.testMode }}
           customParameters: ${{ matrix.shard.selector }}
-          # For PRs from the same repo, allow annotations; from forks, skip token to avoid permission errors
           githubToken: ${{ github.event.pull_request.head.repo.full_name == github.repository && secrets.GITHUB_TOKEN || '' }}
-          checkName: "PR ${{ matrix.testMode }} • ${{ matrix.shard.name }} Test Results"
+          checkName: "PR ${{ matrix.testMode }} - ${{ matrix.shard.name }} Test Results"
 
       - name: Upload test artifacts (only on failure)
         if: failure()
@@ -210,18 +208,15 @@ jobs:
           name: PR-TestResults-${{ github.event.pull_request.head.ref }}-${{ matrix.testMode }}-${{ matrix.shard.name }}
           path: ${{ steps.tests.outputs.artifactsPath || 'artifacts' }}
           retention-days: 1
-          if-no-files-found: ignore# -----------------------------------------------------------------------
-  # 4) PR BUILD: only if validation passes (reuse-pass OR fallback tests succeeded)
-  #    Keep fast: single platform by default (extend matrix to add more)
+          if-no-files-found: ignore
+
   # -----------------------------------------------------------------------
-  build_on_valid_pr:
-    if: |
-      github.event_name == 'pull_request' && (
-        (needs.pr_lookup.outputs.should_run == 'false' && success()) ||
-        (needs.pr_lookup.result == 'success' && needs.pr_gate_fallback.result == 'success')
-      )
-    needs: [pr_lookup, pr_gate_reuse, pr_gate_fallback]
-    name: Build on valid PR (${{ matrix.buildMatrix.targetPlatform }})
+  # 4) MERGE TO MAIN: build only when code lands on main (via merged PR)
+  #    Tests already passed via PR gate - go straight to build.
+  # -----------------------------------------------------------------------
+  build_on_merge:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: Build on merge (${{ matrix.buildMatrix.targetPlatform }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -229,10 +224,10 @@ jobs:
         buildMatrix:
           - targetPlatform: StandaloneWindows64
     steps:
-      - name: Checkout PR head
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           lfs: true
 
@@ -261,14 +256,12 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: ${{ matrix.buildMatrix.targetPlatform }}
-          # projectPath: .   # (uncomment if your project sits in a subfolder)
-          # (Builder follows the same pattern recommended by GameCI docs)  # cite
 
-      - name: Upload build artifacts (1 day)
+      - name: Upload build artifacts (7 days)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Build-${{ matrix.buildMatrix.targetPlatform }}-${{ github.event.pull_request.head.ref }}
+          name: Build-${{ matrix.buildMatrix.targetPlatform }}-${{ github.sha }}
           path: build/${{ matrix.buildMatrix.targetPlatform }}
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: ignore
