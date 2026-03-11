@@ -4,7 +4,8 @@
 [ext_resource type="PackedScene" uid="uid://c03xgecrnst41" path="res://assets/walls.fbx" id="2_3draf"]
 [ext_resource type="PackedScene" uid="uid://btqm4vtonvbhe" path="res://assets/bunkbed.fbx" id="3_krhs5"]
 [ext_resource type="PackedScene" uid="uid://c5xmjcdk0bqn4" path="res://assets/desk.gltf" id="4_d8yva"]
-[ext_resource type="PackedScene" uid="uid://bivseib1y0tuu" path="res://assets/chair.gltf" id="5_4q2lo"]
+[ext_resource type="PackedScene" uid="uid://hkrfjw1gaxs8" path="res://assets/chair.gltf" id="5_4q2lo"]
+[ext_resource type="Script" uid="uid://dax64y2ikiy7n" path="res://scripts/player/camera_manager.gd" id="6_cam_mgr"]
 
 [node name="InitialHostel" type="Node3D" unique_id=1832940272]
 
@@ -67,3 +68,13 @@ transform = Transform3D(-0.16383041, 0, 0.11471529, 0, 0.2, 0, -0.11471529, 0, -
 
 [node name="chair6" parent="." unique_id=1313599193 instance=ExtResource("5_4q2lo")]
 transform = Transform3D(-0.11755704, 0, 0.16180341, 0, 0.2, 0, -0.16180341, 0, -0.11755704, -5.764032, -0.16827989, 3.9405212)
+
+[node name="CameraRig" type="Node3D" parent="." unique_id=451773927]
+script = ExtResource("6_cam_mgr")
+
+[node name="Camera1" type="Camera3D" parent="CameraRig" unique_id=610844947]
+transform = Transform3D(0.6612783, 0.53108525, -0.52977324, -0.07063593, 0.74717855, 0.66085917, 0.7468077, -0.39959073, 0.53160655, -11.95859, 8.159046, 8.102611)
+current = true
+
+[node name="Camera2" type="Camera3D" parent="CameraRig" unique_id=150424391]
+transform = Transform3D(-0.72234744, -0.42127097, 0.54840225, 0.013363191, 0.7843755, 0.6201424, -0.69140124, 0.45528662, -0.5609621, 13.59031, 9.009677, -9.6398735)

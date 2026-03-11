@@ -32,6 +32,7 @@ window/size/resizable=false
 [input]
 
 ui_accept={
+"deadzone": 0.5,
 "events": [{
 "keycode": 4194309,
 "physical_keycode": 4194309,
@@ -43,6 +44,7 @@ ui_accept={
 }]
 }
 ui_cancel={
+"deadzone": 0.5,
 "events": [{
 "keycode": 4194308,
 "physical_keycode": 4194308,
@@ -50,6 +52,7 @@ ui_cancel={
 }]
 }
 ui_left={
+"deadzone": 0.5,
 "events": [{
 "keycode": 4194319,
 "physical_keycode": 4194319,
@@ -57,6 +60,7 @@ ui_left={
 }]
 }
 ui_right={
+"deadzone": 0.5,
 "events": [{
 "keycode": 4194321,
 "physical_keycode": 4194321,
@@ -64,6 +68,7 @@ ui_right={
 }]
 }
 ui_up={
+"deadzone": 0.5,
 "events": [{
 "keycode": 4194320,
 "physical_keycode": 4194320,
@@ -71,6 +76,7 @@ ui_up={
 }]
 }
 ui_down={
+"deadzone": 0.5,
 "events": [{
 "keycode": 4194322,
 "physical_keycode": 4194322,
@@ -78,6 +84,7 @@ ui_down={
 }]
 }
 move_up={
+"deadzone": 0.5,
 "events": [{
 "keycode": 87,
 "physical_keycode": 87,
@@ -94,6 +101,7 @@ move_up={
 }]
 }
 move_down={
+"deadzone": 0.5,
 "events": [{
 "keycode": 83,
 "physical_keycode": 83,
@@ -110,6 +118,7 @@ move_down={
 }]
 }
 move_left={
+"deadzone": 0.5,
 "events": [{
 "keycode": 65,
 "physical_keycode": 65,
@@ -126,6 +135,7 @@ move_left={
 }]
 }
 move_right={
+"deadzone": 0.5,
 "events": [{
 "keycode": 68,
 "physical_keycode": 68,
@@ -153,6 +163,7 @@ look={
 }]
 }
 attack={
+"deadzone": 0.5,
 "events": [{
 "button_index": 1,
 "type": "InputEventMouseButton"
@@ -167,6 +178,7 @@ attack={
 }]
 }
 interact={
+"deadzone": 0.5,
 "events": [{
 "keycode": 69,
 "physical_keycode": 69,
@@ -178,6 +190,7 @@ interact={
 }]
 }
 crouch={
+"deadzone": 0.5,
 "events": [{
 "keycode": 67,
 "physical_keycode": 67,
@@ -189,6 +202,7 @@ crouch={
 }]
 }
 jump={
+"deadzone": 0.5,
 "events": [{
 "keycode": 32,
 "physical_keycode": 32,
@@ -200,6 +214,7 @@ jump={
 }]
 }
 previous={
+"deadzone": 0.5,
 "events": [{
 "keycode": 49,
 "physical_keycode": 49,
@@ -211,6 +226,7 @@ previous={
 }]
 }
 next={
+"deadzone": 0.5,
 "events": [{
 "keycode": 50,
 "physical_keycode": 50,
@@ -222,6 +238,7 @@ next={
 }]
 }
 sprint={
+"deadzone": 0.5,
 "events": [{
 "keycode": 4194325,
 "physical_keycode": 4194325,
@@ -233,6 +250,7 @@ sprint={
 }]
 }
 camera_switch={
+"deadzone": 0.5,
 "events": [{
 "keycode": 70,
 "physical_keycode": 70,

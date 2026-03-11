@@ -1,11 +1,28 @@
-# Godot
+# Godot (based on github/gitignore Godot.gitignore)
 .godot/
+.nomedia
 .import/
-.export/
-.mono/
+export.cfg
+export_credentials.cfg
+*.tmp
 
-# IDE / OS
+# Imported translations (auto-generated from CSV files)
+*.translation
+
+# Mono-specific
+.mono/
+data_*/
+mono_crash.*.json
+
+# IDE
 .vscode/
 .idea/
-*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
 *.log
