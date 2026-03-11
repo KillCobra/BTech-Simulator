@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://c03xgecrnst41" path="res://assets/walls.fbx" id="2_3draf"]
 [ext_resource type="PackedScene" uid="uid://btqm4vtonvbhe" path="res://assets/bunkbed.fbx" id="3_krhs5"]
 [ext_resource type="PackedScene" uid="uid://c5xmjcdk0bqn4" path="res://assets/desk.gltf" id="4_d8yva"]
-[ext_resource type="PackedScene" uid="uid://bivseib1y0tuu" path="res://assets/chair.fbx" id="5_4q2lo"]
+[ext_resource type="PackedScene" uid="uid://bivseib1y0tuu" path="res://assets/chair.gltf" id="5_4q2lo"]
 
 [node name="InitialHostel" type="Node3D" unique_id=1832940272]
 
