@@ -1,4 +1,4 @@
-name: Build Godot Project
+name: Godot Tests & Build
 
 on:
   push:
@@ -49,17 +49,27 @@ jobs:
       image: barichello/godot-ci:4.4
     if: github.ref != 'refs/heads/main' || github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
+          fetch-depth: 1
           lfs: true
+
+      - name: Verify Godot setup
+        run: |
+          test -f project.godot || { echo "project.godot not found"; exit 1; }
+          test -f export_presets.cfg || { echo "export_presets.cfg not found"; exit 1; }
+          grep -q 'name="Windows Desktop"' export_presets.cfg || {
+            echo "Windows Desktop export preset not found"; cat export_presets.cfg; exit 1;
+          }
+          godot --version
 
       - name: Import project
         run: |
-          godot --headless --import
+          godot --headless --path . --import
 
       - name: Run GdUnit4 tests
         run: |
-          godot --headless -s addons/gdUnit4/bin/GdUnitCmdTool.gd --testsuite=tests/
+          godot --headless --path . -s addons/gdUnit4/bin/GdUnitCmdTool.gd --testsuite=tests/
 
   build_on_main:
     name: Build Windows on main
@@ -68,27 +78,38 @@ jobs:
     container:
       image: barichello/godot-ci:4.4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           lfs: true
+
+      - name: Verify Godot setup
+        run: |
+          test -f project.godot || { echo "project.godot not found"; exit 1; }
+          test -f export_presets.cfg || { echo "export_presets.cfg not found"; exit 1; }
+          grep -q 'name="Windows Desktop"' export_presets.cfg || {
+            echo "Windows Desktop export preset not found"; cat export_presets.cfg; exit 1;
+          }
+          godot --version
 
       - name: Setup export templates
         run: |
-          mkdir -p ~/.local/share/godot/export_templates/4.4.stable
-          mv /root/.local/share/godot/export_templates/4.4.stable/* ~/.local/share/godot/export_templates/4.4.stable/ || true
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.stable"
+          if [ -d /root/.local/share/godot/export_templates/4.4.stable ] && [ "/root/.local/share/godot/export_templates/4.4.stable" != "$HOME/.local/share/godot/export_templates/4.4.stable" ]; then
+            cp -a /root/.local/share/godot/export_templates/4.4.stable/. "$HOME/.local/share/godot/export_templates/4.4.stable/"
+          fi
 
       - name: Import project
         run: |
-          godot --headless --import
+          godot --headless --path . --import
 
       - name: Build Windows
         run: |
           mkdir -p build/windows
-          godot --headless --export-release "Windows Desktop" ../build/windows/BTechSimulator.exe
+          godot --headless --path . --export-release "Windows Desktop" build/windows/BTechSimulator.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
-          name: Build-windows
+          name: GodotBuild-WindowsDesktop
           path: build/windows
-          retention-days: 7
+          retention-days: 1
