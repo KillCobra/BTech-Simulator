@@ -1,0 +1,139 @@
+{
+    "timestamp":  "2026-03-06T01:12:06",
+    "mode":  "audit",
+    "unity_asset_count":  38,
+    "godot_asset_count":  66,
+    "missing_assets_in_godot":  [
+
+                                ],
+    "extra_assets_in_godot":  [
+                                  {
+                                      "value":  "big_book_shelf.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "big_book_shelf_1.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "bunk_bed.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "full_room.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "player_su.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "single_bed.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "table_chair.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "wall_book_shelf.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\backpack.gltf",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\bag.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\bag.gltf",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\bookshelf.gltf",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\bunkbed.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\cctv.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\ceiling.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\chair.gltf",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\character.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\clock.gltf",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\desk.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\desk.gltf",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\door.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\gaura.gltf",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\gaura_0.png",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\hostel_floor.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\room.obj",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\walls.fbx",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\wall_mounted_shelf.gltf",
+                                      "SideIndicator":  "=\u003e"
+                                  },
+                                  {
+                                      "value":  "goxel_import\\wall_mounted_shelf_0.png",
+                                      "SideIndicator":  "=\u003e"
+                                  }
+                              ],
+    "missing_expected_scripts":  [
+
+                                 ],
+    "missing_input_actions":  [
+
+                              ],
+    "scene_files":  [
+                        {
+                            "Scene":  "scenes/sample_scene.tscn",
+                            "Exists":  true
+                        },
+                        {
+                            "Scene":  "scenes/initial_hostel.tscn",
+                            "Exists":  true
+                        }
+                    ]
+}

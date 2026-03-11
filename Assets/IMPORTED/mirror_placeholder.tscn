@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3 uid="uid://mirror_placeholder"]
+
+[sub_resource type="BoxMesh" id="1"]
+size = Vector3(1.0, 1.5, 0.05)
+
+[node name="Mirror" type="Node3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")

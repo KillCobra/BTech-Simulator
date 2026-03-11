@@ -1,0 +1,8 @@
+[gd_resource type="Environment" load_steps=2 format=3]
+
+[resource]
+glow_enabled = true
+ssao_enabled = true
+fog_enabled = true
+tonemap_mode = 1 # ACES
+ambient_light_color = Color(0.8, 0.8, 0.8)

@@ -1,0 +1,267 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="BTech Simulator"
+run/main_scene="uid://bih27lwela84t"
+config/features=PackedStringArray("4.6", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+GameManager="*res://scripts/autoload/game_manager.gd"
+GameState="*res://scripts/autoload/game_state.gd"
+SceneLoader="*res://scripts/autoload/scene_loader.gd"
+SaveSystem="*res://scripts/autoload/save_system.gd"
+TimeOfDayManager="*res://scripts/autoload/time_of_day_manager.gd"
+
+[display]
+
+window/size/viewport_width=1024
+window/size/viewport_height=768
+window/size/resizable=false
+
+[input]
+
+ui_accept={
+"events": [{
+"keycode": 4194309,
+"physical_keycode": 4194309,
+"type": "InputEventKey"
+}, {
+"keycode": 32,
+"physical_keycode": 32,
+"type": "InputEventKey"
+}]
+}
+ui_cancel={
+"events": [{
+"keycode": 4194308,
+"physical_keycode": 4194308,
+"type": "InputEventKey"
+}]
+}
+ui_left={
+"events": [{
+"keycode": 4194319,
+"physical_keycode": 4194319,
+"type": "InputEventKey"
+}]
+}
+ui_right={
+"events": [{
+"keycode": 4194321,
+"physical_keycode": 4194321,
+"type": "InputEventKey"
+}]
+}
+ui_up={
+"events": [{
+"keycode": 4194320,
+"physical_keycode": 4194320,
+"type": "InputEventKey"
+}]
+}
+ui_down={
+"events": [{
+"keycode": 4194322,
+"physical_keycode": 4194322,
+"type": "InputEventKey"
+}]
+}
+move_up={
+"events": [{
+"keycode": 87,
+"physical_keycode": 87,
+"type": "InputEventKey"
+}, {
+"keycode": 4194320,
+"physical_keycode": 4194320,
+"type": "InputEventKey"
+}, {
+"axis": 1,
+"axis_value": -1.0,
+"device": -1,
+"type": "InputEventJoypadMotion"
+}]
+}
+move_down={
+"events": [{
+"keycode": 83,
+"physical_keycode": 83,
+"type": "InputEventKey"
+}, {
+"keycode": 4194322,
+"physical_keycode": 4194322,
+"type": "InputEventKey"
+}, {
+"axis": 1,
+"axis_value": 1.0,
+"device": -1,
+"type": "InputEventJoypadMotion"
+}]
+}
+move_left={
+"events": [{
+"keycode": 65,
+"physical_keycode": 65,
+"type": "InputEventKey"
+}, {
+"keycode": 4194319,
+"physical_keycode": 4194319,
+"type": "InputEventKey"
+}, {
+"axis": 0,
+"axis_value": -1.0,
+"device": -1,
+"type": "InputEventJoypadMotion"
+}]
+}
+move_right={
+"events": [{
+"keycode": 68,
+"physical_keycode": 68,
+"type": "InputEventKey"
+}, {
+"keycode": 4194321,
+"physical_keycode": 4194321,
+"type": "InputEventKey"
+}, {
+"axis": 0,
+"axis_value": 1.0,
+"device": -1,
+"type": "InputEventJoypadMotion"
+}]
+}
+look={
+"deadzone": 0.15,
+"events": [{
+"axis": 2,
+"axis_value": 1.0,
+"device": -1,
+"type": "InputEventJoypadMotion"
+}, {
+"type": "InputEventMouseMotion"
+}]
+}
+attack={
+"events": [{
+"button_index": 1,
+"type": "InputEventMouseButton"
+}, {
+"button_index": 2,
+"device": -1,
+"type": "InputEventJoypadButton"
+}, {
+"keycode": 4194309,
+"physical_keycode": 4194309,
+"type": "InputEventKey"
+}]
+}
+interact={
+"events": [{
+"keycode": 69,
+"physical_keycode": 69,
+"type": "InputEventKey"
+}, {
+"button_index": 0,
+"device": -1,
+"type": "InputEventJoypadButton"
+}]
+}
+crouch={
+"events": [{
+"keycode": 67,
+"physical_keycode": 67,
+"type": "InputEventKey"
+}, {
+"button_index": 1,
+"device": -1,
+"type": "InputEventJoypadButton"
+}]
+}
+jump={
+"events": [{
+"keycode": 32,
+"physical_keycode": 32,
+"type": "InputEventKey"
+}, {
+"button_index": 3,
+"device": -1,
+"type": "InputEventJoypadButton"
+}]
+}
+previous={
+"events": [{
+"keycode": 49,
+"physical_keycode": 49,
+"type": "InputEventKey"
+}, {
+"button_index": 9,
+"device": -1,
+"type": "InputEventJoypadButton"
+}]
+}
+next={
+"events": [{
+"keycode": 50,
+"physical_keycode": 50,
+"type": "InputEventKey"
+}, {
+"button_index": 8,
+"device": -1,
+"type": "InputEventJoypadButton"
+}]
+}
+sprint={
+"events": [{
+"keycode": 4194325,
+"physical_keycode": 4194325,
+"type": "InputEventKey"
+}, {
+"button_index": 10,
+"device": -1,
+"type": "InputEventJoypadButton"
+}]
+}
+camera_switch={
+"events": [{
+"keycode": 70,
+"physical_keycode": 70,
+"type": "InputEventKey"
+}, {
+"button_index": 5,
+"device": -1,
+"type": "InputEventJoypadButton"
+}]
+}
+
+[layer_names]
+
+2d_physics/layer_1="Default"
+3d_physics/layer_1="Default"
+3d_physics/layer_2="Player"
+3d_physics/layer_3="Interactable"
+3d_physics/layer_4="Environment"
+2d_physics/layer_6="UI"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+physics/3d/default_gravity=9.81
+physics/3d/solver/solver_iterations=6
+physics/2d/default_gravity=9.81
+physics/2d/solver/default_velocity_iterations=8
+
+[rendering]
+
+rendering_device/driver.windows="d3d12"
+environment/defaults/default_clear_color=Color(0.05, 0.05, 0.08, 1)

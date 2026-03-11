@@ -1,0 +1,11 @@
+[
+    {
+        "name":  "Camera1"
+    },
+    {
+        "name":  "Camera2"
+    },
+    {
+        "name":  "SwitchCamera"
+    }
+]
