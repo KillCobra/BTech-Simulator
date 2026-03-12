@@ -1,0 +1,27 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player/camera_manager.gd" id="1_cam_mgr"]
+
+[node name="LevelRoot" type="Node3D"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+
+[node name="Lighting" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.6, 0.0, 0.0)
+light_energy = 1.2
+
+[node name="PlayerSpawn" type="Marker3D" parent="."]
+position = Vector3(0, 0.1, 0)
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("1_cam_mgr")
+
+[node name="Camera1" type="Camera3D" parent="CameraRig"]
+position = Vector3(0, 2.0, 6.0)
+rotation = Vector3(-0.15, 3.14159, 0)
+current = true
+
+[node name="Camera2" type="Camera3D" parent="CameraRig"]
+position = Vector3(6.0, 2.5, 0.0)
+rotation = Vector3(-0.2, -1.57, 0)
+current = false

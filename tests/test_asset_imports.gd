@@ -2,14 +2,15 @@ extends "res://addons/gdUnit4/src/GdUnitTestSuite.gd"
 
 func test_core_assets_exist():
     var assets = [
-        "res://assets/imported/PLAYER.fbx",
-        "res://assets/imported/full-room.fbx",
-        "res://assets/imported/bunk-bed.fbx",
-        "res://assets/imported/curtains.fbx",
-        "res://assets/imported/mirror.fbx",
-        "res://assets/imported/Goxel Import/Room.obj",
-        "res://assets/imported/Test/Switch Camera/SwitchCamera.cs"
+        "res://assets/hostel floor.fbx",
+        "res://assets/walls.fbx",
+        "res://assets/bunkbed.fbx",
+        "res://assets/desk.gltf",
+        "res://assets/chair.gltf",
+        "res://assets/cctv.fbx",
+        "res://assets/character.fbx",
+        "res://assets/Room.obj"
     ]
 
     for asset_path in assets:
-        assert_true(FileAccess.file_exists(asset_path), "Missing migrated asset: %s" % asset_path)
+        assert_true(FileAccess.file_exists(asset_path), "Missing asset: %s" % asset_path)

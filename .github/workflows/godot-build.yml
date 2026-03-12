@@ -58,8 +58,8 @@ jobs:
         run: |
           test -f project.godot || { echo "project.godot not found"; exit 1; }
           test -f export_presets.cfg || { echo "export_presets.cfg not found"; exit 1; }
-          grep -q 'name="Windows Desktop"' export_presets.cfg || {
-            echo "Windows Desktop export preset not found"; cat export_presets.cfg; exit 1;
+          grep -q 'name="WindowsDesktop"' export_presets.cfg || {
+            echo "WindowsDesktop export preset not found"; cat export_presets.cfg; exit 1;
           }
           godot --version
 
@@ -87,8 +87,8 @@ jobs:
         run: |
           test -f project.godot || { echo "project.godot not found"; exit 1; }
           test -f export_presets.cfg || { echo "export_presets.cfg not found"; exit 1; }
-          grep -q 'name="Windows Desktop"' export_presets.cfg || {
-            echo "Windows Desktop export preset not found"; cat export_presets.cfg; exit 1;
+          grep -q 'name="WindowsDesktop"' export_presets.cfg || {
+            echo "WindowsDesktop export preset not found"; cat export_presets.cfg; exit 1;
           }
           godot --version
 
@@ -106,7 +106,7 @@ jobs:
       - name: Build Windows
         run: |
           mkdir -p build/windows
-          godot --headless --path . --export-release "Windows Desktop" build/windows/BTechSimulator.exe
+          godot --headless --path . --export-release "WindowsDesktop" build/windows/BTechSimulator.exe
 
       - uses: actions/upload-artifact@v5
         with:
