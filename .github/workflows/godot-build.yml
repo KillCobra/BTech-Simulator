@@ -2,7 +2,7 @@ name: Godot Tests & Build
 
 on:
   push:
-    paths:
+    paths: &godot_paths
       - 'addons/**'
       - 'assets/**'
       - 'resources/**'
@@ -18,20 +18,7 @@ on:
       - '.github/workflows/godot-build.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'addons/**'
-      - 'assets/**'
-      - 'resources/**'
-      - 'scenes/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'tools/**'
-      - '.godot/**'
-      - 'project.godot'
-      - 'export_presets.cfg'
-      - 'icon.svg'
-      - 'icon.svg.import'
-      - '.github/workflows/godot-build.yml'
+    paths: *godot_paths
 
 permissions:
   contents: read
@@ -49,12 +36,24 @@ jobs:
       image: barichello/godot-ci:4.4
     if: github.ref != 'refs/heads/main' || github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v5
+      - &checkout_step
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
           lfs: true
+      - &cache_imports_step
+        name: Cache Godot imports
+        uses: actions/cache@v4
+        with:
+          path: |
+            .godot/
+            .import/
+          key: godot-imports-${{ runner.os }}-${{ hashFiles('**/*.import', 'project.godot', 'export_presets.cfg') }}
+          restore-keys: |
+            godot-imports-${{ runner.os }}-
 
-      - name: Verify Godot setup
+      - &verify_godot_step
+        name: Verify Godot setup
         run: |
           test -f project.godot || { echo "project.godot not found"; exit 1; }
           test -f export_presets.cfg || { echo "export_presets.cfg not found"; exit 1; }
@@ -63,9 +62,14 @@ jobs:
           }
           godot --version
 
-      - name: Import project
+      - &import_project_step
+        name: Import project
         run: |
           godot --headless --path . --import
+
+      - name: Verify GdUnit4 addon
+        run: |
+          test -d addons/gdUnit4 || { echo "GdUnit4 addon missing at res://addons/gdUnit4"; exit 1; }
 
       - name: Run GdUnit4 tests
         run: |
@@ -73,40 +77,29 @@ jobs:
 
   build_on_main:
     name: Build Windows on main
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     container:
       image: barichello/godot-ci:4.4
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-          lfs: true
-
-      - name: Verify Godot setup
-        run: |
-          test -f project.godot || { echo "project.godot not found"; exit 1; }
-          test -f export_presets.cfg || { echo "export_presets.cfg not found"; exit 1; }
-          grep -q 'name="WindowsDesktop"' export_presets.cfg || {
-            echo "WindowsDesktop export preset not found"; cat export_presets.cfg; exit 1;
-          }
-          godot --version
+      - *checkout_step
+      - *cache_imports_step
+      - *verify_godot_step
 
       - name: Setup export templates
         run: |
-          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.stable"
-          if [ -d /root/.local/share/godot/export_templates/4.4.stable ] && [ "/root/.local/share/godot/export_templates/4.4.stable" != "$HOME/.local/share/godot/export_templates/4.4.stable" ]; then
-            cp -a /root/.local/share/godot/export_templates/4.4.stable/. "$HOME/.local/share/godot/export_templates/4.4.stable/"
-          fi
+          TEMPLATES_DIR="$HOME/.local/share/godot/export_templates/4.4.stable"
+          mkdir -p "$TEMPLATES_DIR"
+          curl -L -o /tmp/godot_templates.tpz "https://downloads.godotengine.org/?flavor=stable&platform=templates&slug=export_templates.tpz&version=4.4"
+          unzip -q /tmp/godot_templates.tpz -d /tmp/godot_templates
+          cp -a /tmp/godot_templates/templates/. "$TEMPLATES_DIR/"
 
-      - name: Import project
-        run: |
-          godot --headless --path . --import
+      - *import_project_step
 
       - name: Build Windows
         run: |
           mkdir -p build/windows
-          godot --headless --path . --export-release "WindowsDesktop" build/windows/BTechSimulator.exe
+          godot --headless --path . --export-release "WindowsDesktop" build/windows/BTechSimulator-${{ github.sha }}.exe
 
       - uses: actions/upload-artifact@v5
         with:
