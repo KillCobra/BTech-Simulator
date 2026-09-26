@@ -156,6 +156,7 @@ var _essay: PanelContainer
 var _essay_line: Label
 var _essay_edit: LineEdit
 var _essay_time: Label
+var _essay_shake: Tween
 var _exam: Control
 var _exam_key := ""
 var _sus_fill: ColorRect
@@ -1007,8 +1008,14 @@ func open_essay() -> void:
 		_essay_edit.placeholder_text = "Start typing the line..."
 		_essay_edit.keep_editing_on_text_submit = true  # Enter sends it, and you type the next one straight away
 		_essay_edit.text_submitted.connect(func(text: String):
-			if text.strip_edges() != "":
-				director.request.rpc_id(1, "essay", {"text": text})
+			if text.strip_edges() == "":
+				return
+			var st: Dictionary = director.status.get(multiplayer.get_unique_id(), {})
+			var want: String = director.LINES[int(st.get("essay_line", 0)) % director.LINES.size()]
+			if not director.essay_matches(text, want):
+				_essay_wrong()
+				return
+			director.request.rpc_id(1, "essay", {"text": text})
 			_essay_edit.clear()
 			_essay_edit.edit())
 		col.add_child(_essay_edit)
@@ -1039,6 +1046,8 @@ func _dev_type_lines(director: Node) -> void:
 			return
 		var st: Dictionary = director.status.get(multiplayer.get_unique_id(), {})
 		var line: String = director.LINES[int(st.get("essay_line", 0)) % director.LINES.size()]
+		if n == 0 and OS.get_cmdline_user_args().has("--typebot-wrong"):
+			line = "I will bunk every class"  # dev: a wrong line first (red flash + shake)
 		for ch in line:
 			var ev := InputEventKey.new()
 			ev.pressed = true
@@ -1052,6 +1061,27 @@ func _dev_type_lines(director: Node) -> void:
 		enter.physical_keycode = KEY_ENTER
 		Input.parse_input_event(enter)
 		await get_tree().create_timer(1.0).timeout
+
+
+## Wrong line: the text flashes red, the paper shakes, then the line is wiped.
+func _essay_wrong() -> void:
+	if _essay_shake and _essay_shake.is_valid():
+		_essay_shake.kill()
+	Sfx.play("deny", -6.0)
+	if OS.get_cmdline_user_args().has("--typebot"):
+		print("[typebot] wrong line: %s" % _essay_edit.text)
+	_essay_edit.add_theme_color_override("font_color", Color("d42a2a"))
+	var shift := func(v: float) -> void:
+		_essay.offset_left = -280.0 + v
+		_essay.offset_right = 280.0 + v
+	_essay_shake = create_tween()
+	for k in 6:
+		_essay_shake.tween_method(shift, 0.0 if k == 0 else (10.0 if k % 2 == 1 else -10.0), 10.0 if k % 2 == 0 else -10.0, 0.04)
+	_essay_shake.tween_method(shift, -10.0, 0.0, 0.04)
+	_essay_shake.tween_callback(func():
+		_essay_edit.clear()
+		_essay_edit.remove_theme_color_override("font_color")
+		_essay_edit.edit())
 
 
 func close_essay() -> void:
@@ -1370,7 +1400,7 @@ func _show_app(k: int) -> void:
 func _refresh_phone(director: Node, me: Node, st: Dictionary, delta: float) -> void:
 	if not phone_open():
 		return
-	if st.get("state", "") in ["escaped"] or director.round_over:
+	if director.round_over:
 		toggle_phone()
 		return
 	_phone_tick -= delta
@@ -1589,8 +1619,9 @@ func _build_navigate() -> void:
 func _refresh_navigate(director: Node, me: Node, st: Dictionary) -> void:
 	if _nav_map == null or me == null:
 		return
-	if st.get("state", "") == "detention":
-		_nav_info.text = "You're in detention. Finish it first!"
+	if st.get("state", "") in ["detention", "escaped"]:
+		_nav_info.text = "You're in detention. Finish it first!" if st.state == "detention" \
+				else "You're OUT! No seat to get back to.\nTrack the staff, ping, or throw paper balls over the wall to help friends still inside."
 		_nav_map.route = []
 		_nav_map.queue_redraw()
 		return
@@ -1646,7 +1677,7 @@ func _update_route(director: Node, me: Node, st: Dictionary) -> void:
 	var now := _now()
 	var nav_open := phone_open() and _phone_app == NAV_APP
 	var showing := now < _route_until
-	if me == null or (not nav_open and not showing):
+	if me == null or (not nav_open and not showing) or st.get("state", "") in ["escaped", "detention"]:
 		if _trail:
 			_trail.queue_free()
 			_trail = null

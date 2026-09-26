@@ -1240,7 +1240,8 @@ func _cctv_and_alarms() -> void:
 
 
 ## A sweeping camera on a bracket. It watches 16 m ahead and calls the nearest staff.
-func add_cctv(pos: Vector3, base_yaw: float, sweep: float, speed: float) -> void:
+## `floor_y`: the floor the camera watches (default: the one it hangs over, ~2.6 m down).
+func add_cctv(pos: Vector3, base_yaw: float, sweep: float, speed: float, floor_y := NAN) -> void:
 	var node := Node3D.new()
 	node.position = pos
 	var tilt := Node3D.new()
@@ -1263,7 +1264,8 @@ func add_cctv(pos: Vector3, base_yaw: float, sweep: float, speed: float) -> void
 	tilt.add_child(led_mi)
 	_root.add_child(node)
 	_vbox(pos + Vector3(0, 0.2, 0), Vector3(0.06, 0.48, 0.06), P.METAL_DARK)  # up to the ceiling or down onto a pole
-	cctv.append({"node": node, "pos": pos, "base_yaw": base_yaw, "sweep": sweep, "speed": speed})
+	cctv.append({"node": node, "pos": pos, "base_yaw": base_yaw, "sweep": sweep, "speed": speed,
+		"floor": pos.y - 2.6 if is_nan(floor_y) else floor_y})
 
 
 func _nav_outdoors() -> void:

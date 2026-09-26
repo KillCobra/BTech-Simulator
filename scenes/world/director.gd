@@ -28,18 +28,22 @@ const HAND_LINES := ["Here. No peeking at your neighbour.", "Name at the top. Ne
 const LATE_LINES := ["Late AND unprepared, hmm? Here.", "Nice of you to join us. Your paper.",
 	"Tsk. Sit. Write. Quickly.", "Sit. Write. Don't make me regret this.", "Oh, you decided to come? Take it."]
 const SUBJECTS := ["Thermodynamics", "Engineering Maths", "Data Structures", "Chemistry"]
-const LINES := ["I will not bunk class.", "I will respect my teachers.", "Attendance is not optional.",
-	"The canteen is not a classroom.", "I will stay in my seat.", "I will not pull the fire alarm.",
-	"I will not climb out of windows.", "Lockers are for books, not students.", "I will not bribe staff with samosas.",
-	"The service gate is not an exit.", "I will not answer attendance for my friends.", "Paper balls are not homework.",
-	"The principal's car is not a selfie spot.", "I will raise my hand before I speak.", "I will not sprint in the corridors.",
-	"A hall pass is not a holiday.", "I will not hide in the washroom.", "The library is a place of silence.",
-	"I will copy my own notes.", "I will not ring the office bell for fun.", "Exams are not a group project.",
-	"I will not play the drums during class.", "Detention is not a social club.", "My seat misses me when I leave it.",
-	"I will not trade samosas during lectures."]
+const LINES := ["I will not bunk class", "I will respect my teachers", "Attendance is not optional",
+	"The canteen is not a classroom", "I will stay in my seat", "I will not pull the fire alarm",
+	"I will not climb out of windows", "Lockers are for books, not students", "I will not bribe staff with samosas",
+	"The service gate is not an exit", "I will not answer attendance for my friends", "Paper balls are not homework",
+	"The principal's car is not a selfie spot", "I will raise my hand before I speak", "I will not sprint in the corridors",
+	"A hall pass is not a holiday", "I will not hide in the washroom", "The library is a place of silence",
+	"I will copy my own notes", "I will not ring the office bell for fun", "Exams are not a group project",
+	"I will not play the drums during class", "Detention is not a social club", "My seat misses me when I leave it",
+	"I will not trade samosas during lectures"]
 const CONTRABAND := ["canteen_key", "medical_note", "hall_pass"]
 const CATCH_DIST := 1.5
 const NOISE_RADIUS := 8.0
+## Staff and cameras only notice students on (about) their own floor: storeys are 3.6 m
+## apart, so this blocks spotting or hearing through ceilings, stair openings and windows
+## across a courtyard, but still covers stair landings and bleachers.
+const FLOOR_REACH := 2.4
 const HALL_PASS_TIME := 35.0
 const ALARM_TIME := 25.0
 const ALARM_COOLDOWN := 150.0
@@ -167,6 +171,13 @@ func start(seats: Dictionary, minutes: float) -> void:
 	world.period_len = round_time / float(world.periods)
 	world.passing_time = _passing_time()
 	_schedule_period(0)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--jail="):  # dev: the host is sent to detention after N s
+			get_tree().create_timer(float(arg.trim_prefix("--jail="))).timeout.connect(func():
+				for b in _brains:
+					if b.role == "teacher" and status.has(1):
+						_catch(b, 1, "Straight to detention (dev).")
+						return)
 
 	for k in campus.ball_spawns.size():
 		_balls.append(prop_spawner.spawn({"id": "Ball%d" % k, "pos": campus.ball_spawns[k]}))
@@ -497,9 +508,12 @@ func request(action: String, args: Dictionary) -> void:
 	if p == null or not status.has(id):
 		return
 	var st: Dictionary = status[id]
-	if st.state == "detention" or st.state == "escaped":
-		if action != "ping" and not (action == "essay" and st.state == "detention"):
-			return
+	if st.state == "detention" and action not in ["ping", "essay"]:
+		return
+	# Out of the university: you can still ping, trade, boost a friend and throw paper
+	# balls back over the wall to pull staff away from friends still inside.
+	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost"]:
+		return
 	match action:
 		"interact": _on_interact(id, p, int(args.get("i", -1)))
 		"talk": _on_talk(id, p, str(args.get("npc", "")))
@@ -666,7 +680,8 @@ func _on_give(id: int, p: Node3D, to: int, cash: int, slot: int) -> void:
 		return
 	var st: Dictionary = status[id]
 	var ft: Dictionary = status[to]
-	if ft.state in ["detention", "escaped"]:
+	if ft.state == "detention":
+		_tell(id, "%s is in detention: wait till they're out." % _name(to), Color("ffb37a"))
 		return
 	if cash > 0:
 		cash = mini(cash, int(st.cash))
@@ -1061,12 +1076,23 @@ func _on_exam(id: int, p: Node3D, room: int, exam_id: int, score: int) -> void:
 
 
 ## Detention lines: copy the sentence exactly, get out sooner.
+## A detention line counts if it's the same words: case, extra spaces and a
+## final full stop don't matter. (The HUD checks with this too, before sending.)
+static func essay_matches(text: String, want: String) -> bool:
+	var norm := func(s: String) -> String:
+		s = s.strip_edges().to_lower()
+		while "  " in s:
+			s = s.replace("  ", " ")
+		return s.trim_suffix(".").strip_edges()
+	return norm.call(text) == norm.call(want)
+
+
 func _on_essay(id: int, text: String) -> void:
 	var st: Dictionary = status[id]
 	if st.state != "detention" or not _cooldown(id, "essay", 0.8):
 		return
 	var want: String = LINES[int(st.essay_line) % LINES.size()]
-	if text.strip_edges().to_lower().replace("  ", " ") == want.to_lower():
+	if essay_matches(text, want):
 		st.timer = maxf(2.0, float(st.timer) - 5.0)
 		st.essay_line = (int(st.essay_line) + 1 + _rng.randi() % (LINES.size() - 1)) % LINES.size()
 		_tell(id, "Line accepted. -5s", Color("7fe0a0"))
@@ -1266,8 +1292,8 @@ func _noise(pos: Vector3, radius: float) -> void:
 	for b in _brains:
 		if b.role in ["extra"] or b.state in ["chase", "evacuate", "attendance"] or _distracted(b):
 			continue
-		if b.npc.global_position.distance_to(pos) > radius:
-			continue
+		if b.npc.global_position.distance_to(pos) > radius or absf(b.npc.global_position.y - pos.y) > FLOOR_REACH:
+			continue  # too far, or on another floor
 		if b.role == "sitter" and b.npc.name == "Uncle":
 			continue
 		b.resume = b.state
@@ -1698,7 +1724,8 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 			var p: Node3D = players[id]
 			var heard: float = ears * (0.5 if int(status[id].upgrades.get("shoes", 0)) > 0 else 1.0)
 			if p.sprinting and status[id].state in ["class", "chased"] \
-					and p.global_position.distance_to(npc.global_position) < heard:
+					and p.global_position.distance_to(npc.global_position) < heard \
+					and absf(p.global_position.y - npc.global_position.y) < FLOOR_REACH:
 				b.resume = b.state
 				b.state = "investigate"
 				b.timer = 3.0
@@ -1999,7 +2026,7 @@ func _cctv_step(delta: float, players: Dictionary) -> void:
 			var st: Dictionary = status[id]
 			if st.state != "class" or not _suspicious_generic(id, p):
 				continue
-			if not _can_see_from(cam.pos, fwd, p, 16.0, 55.0):
+			if not _can_see_from(cam.pos, fwd, p, 16.0, 55.0, float(cam.get("floor", 0.0))):
 				continue
 			st.seen = true
 			st.sus = minf(100.0, st.sus + 22.0 * delta * (0.45 if _in_crowd(p) else 1.0))
@@ -2237,11 +2264,12 @@ func _seen_by_anyone(p: Node3D) -> bool:
 
 
 func _can_see(npc: Node, p: Node3D, view_range: float, fov_deg: float) -> bool:
-	return _can_see_from(npc.eye_position(), npc.forward(), p, view_range, fov_deg)
+	return _can_see_from(npc.eye_position(), npc.forward(), p, view_range, fov_deg, npc.global_position.y)
 
 
-func _can_see_from(eye: Vector3, fwd: Vector3, p: Node3D, view_range: float, fov_deg: float) -> bool:
-	if p.hidden:
+## `floor_y`: height of the floor the watcher stands on (see FLOOR_REACH).
+func _can_see_from(eye: Vector3, fwd: Vector3, p: Node3D, view_range: float, fov_deg: float, floor_y: float) -> bool:
+	if p.hidden or absf(p.global_position.y - floor_y) > FLOOR_REACH:
 		return false
 	var target := p.global_position + Vector3(0, 0.55 if p.crouching else 1.35, 0)
 	var to := target - eye

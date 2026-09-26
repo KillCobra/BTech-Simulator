@@ -105,13 +105,15 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - **Washrooms:** use the toilet for a no-questions washroom break (-25 suspicion, 20 s to wander back), or hide an
   item in the cistern and fish it out later. Getting caught confiscates the canteen key, medical notes and hall passes.
 - **Detention:** 20 s, and 5 s longer each time you're caught. The lines paper opens by itself: just type the
-  sentence exactly and press Enter (5 s off each), then type the next one. Afterwards you walk back to class yourself (60 s grace); your teacher scolds you and gets
+  sentence exactly and press Enter (5 s off each), then type the next one. A wrong line flashes red, the paper
+  shakes and the line is wiped: try again. Afterwards you walk back to class yourself (60 s grace); your teacher scolds you and gets
   stricter (notices more, less wiggle room at your seat). Sit nicely for 45 s to calm them down a notch.
 - **Controls:** Settings → CONTROLS to rebind any key.
 
 ## How to bunk
 - Stay near your seat while your teacher faces the class; move when they turn to the board.
 - Outside your own classroom you're suspicious to all staff and CCTV. Suspicion fills while seen; at 100% they chase.
+  Staff and cameras only see (and hear) students on their own floor: never through ceilings or across floors.
   CCTV, the librarian and the canteen uncle don't chase: they call someone who will.
 - Sprinting is loud. Crouching hides you behind desks. Walking next to other students gives cover.
 - Hide in lockers or washroom stalls (E) to break a chase, unless they saw you get in.
@@ -126,6 +128,8 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - Items: Hall Pass (ask your teacher or buy one, 35 s of legal wandering), Samosa (bribe/distract staff or eat it),
   Medical Note (staff room cupboard), Canteen Key.
 - Fire alarm (verandah pillars): staff evacuate to the plaza for 25 s. 150 s cooldown.
+- Escaped? You can still use your phone (track staff, trade, ping) and throw paper balls back over the wall to
+  pull staff away from friends still inside.
 - Score: escape +500 plus time left, side quests +150 each, caught -100, spotted -25. Round lengths: 5, 8, 12
   or 20 minutes (the big maps take a while).
 
@@ -144,7 +148,7 @@ Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)
 `--session-host=NAME` / `--session-join=NAME` · `--name=X --room=0..3` ·
 `--at=x,z` · `--walk=x,z;!interact;!use1;!proxy;!wait2;!stand;!coin;!counter;!buy:samosa;!give10;!giveslot0;!bump;...`
 (test bot) · `--autoready` · `--no-staff` · `--trace` · `--cam=x,y,z,tx,ty,tz` · `--shot=file.png --shot_delay=S` ·
-`--bigmap` · `--quit-at-end` · `--phone=-1..5` (home / an app) · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot` · `--exam=0..3 --variant=0..2` ·
+`--bigmap` · `--quit-at-end` · `--phone=-1..5` (home / an app) · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
 bot actions `!ask:0..2` `!examphoto`
 
 ## Not included

@@ -287,7 +287,7 @@ func _watchtower(at: Vector2) -> void:
 	for sx: float in [-0.43, 0.43]:
 		box(p + Vector3(sx, h / 2.0, -1.45), Vector3(0.06, h, 0.06), P.WOOD_DARK, 0.0)
 	# The camera sweeps all the way round.
-	c.add_cctv(p + Vector3(0, h + 1.9, 0), rng.randf() * TAU, PI, 0.18)  # bracket up to the roof
+	c.add_cctv(p + Vector3(0, h + 1.9, 0), rng.randf() * TAU, PI, 0.18, p.y)  # bracket up to the roof; watches the ground
 
 
 func _outside() -> void:
