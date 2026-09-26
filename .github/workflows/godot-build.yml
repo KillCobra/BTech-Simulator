@@ -1,0 +1,71 @@
+name: Build Godot Project
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'b-tech-simulator/**'
+      - '.github/workflows/godot-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'b-tech-simulator/**'
+      - '.github/workflows/godot-build.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build for windows
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Setup export templates
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/4.4.stable
+          mv /root/.local/share/godot/export_templates/4.4.stable/* ~/.local/share/godot/export_templates/4.4.stable/ || true
+
+      - name: Import project
+        run: |
+          cd b-tech-simulator
+          godot --headless --import
+
+      - name: Build Windows
+        run: |
+          mkdir -p build/windows
+          cd b-tech-simulator
+          godot --headless --export-release "Windows Desktop" ../build/windows/BTechSimulator.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Build-windows
+          path: build/windows
+          retention-days: 1
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Import project
+        run: |
+          cd b-tech-simulator
+          godot --headless --import
+
+      - name: Run GdUnit4 tests
+        run: |
+          cd b-tech-simulator
+          godot --headless -s addons/gdUnit4/bin/GdUnitCmdTool.gd --testsuite=tests/
