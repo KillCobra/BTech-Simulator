@@ -5,9 +5,10 @@ extends "res://scenes/world/maps/academic_kit.gd"
 ## (crouch) and a construction site's scaffolding over the north wall.
 ##
 ## The university itself is the Old Quadrangle: four three-storey wings round a
-## courtyard (x -54..54, z -110..34), with the classrooms spread over all floors.
+## courtyard (x -42..42, z -110..-10), joined on every floor, with the classrooms
+## spread over all floors.
 ##
-## Top view: quadrangle at x -54..54, z -110..34; walls at x ±200, z -262 and 100.
+## Top view: quadrangle at x -42..42, z -110..-10; walls at x ±200, z -262 and 100.
 
 const LAKE := Rect2(80, -236, 104, 76)
 const BOARDWALK := Rect2(128, -236, 3, 76)
@@ -17,6 +18,7 @@ const MAZE := Rect2(-130, -52, 40, 40)
 const SITE := Rect2(140, 50, 56, 48)
 const DRAIN_Z := -200.0
 const FENCE_HOLE := [-116.0, -114.4]
+const QX := 42.0  # the quadrangle spans x -QX..QX
 
 # [rect, floors, wall, trim, title, front]
 const BUILDINGS := [
@@ -42,7 +44,7 @@ func _plan() -> void:
 	c.goal_text = "ESCAPE THE UNIVERSITY!  Main gate, fence hole, storm drain or scaffolding.  [M] map"
 	c.win_text = "The chai outside the gate tastes like freedom."
 	# Roads.
-	c.academic_rect = Rect2(-56, -112, 112, 148)
+	c.academic_rect = Rect2(-QX - 2.0, -112, QX * 2.0 + 4.0, 104)
 	road(Rect2(-5, -274, 10, 162), false)           # boulevard: quadrangle entrance -> main gate
 	road(Rect2(-196, 36, 392, 8), true)             # north road (hostels)
 	road(Rect2(-196, -124, 392, 8), true)           # ring road
@@ -54,6 +56,7 @@ func _plan() -> void:
 	walk(Rect2(-9, -262, 4, 150))
 	walk(Rect2(5, -262, 4, 150))
 	walk(Rect2(-20, -116, 40, 6), P.STONE, P.STONE_DARK)  # forecourt of the quadrangle
+	walk(Rect2(-QX - 5.0, -22, 4, 58))              # back door of the north wing -> hostels
 	walk(Rect2(-22, -276, 44, 2))                   # forecourt outside the gate
 	walk(Rect2(-236, -290, 472, 4))                 # far pavement
 	walk(Rect2(-52, -192, 34, 32), P.STONE, P.STONE_DARK, "Fountain Sq.")
@@ -108,7 +111,9 @@ func _build() -> void:
 	flowers(Rect2(-198, -260, 396, 358), 900)
 
 
-## The Old Quadrangle: four wings round a courtyard, three storeys.
+## The Old Quadrangle: four wings round a courtyard, three storeys. The east and
+## west wings run into the south and north wings, and a link doorway on every
+## storey joins their corridors, so you can walk the whole ring on any floor.
 func _quadrangle() -> void:
 	begin_campus()
 	style = {
@@ -116,74 +121,84 @@ func _quadrangle() -> void:
 		"hall": [Color("b85a44"), Color("a04c3a")], "dado_in": Color("a9c3d3"), "dado_hall": Color("8a3a2a"),
 		"dado_out": Color("8a6a4a"), "frame": Color("2f4a6a"), "roof": Color("6a4a3a"), "ceiling": Color("f7f3ea"),
 	}
-	# South wing: the main entrance faces the boulevard.
-	wing(Rect2(-54, -110, 108, 20), true, 3, [
-		[["staff", 12], ["office", 10], ["washroom", 8], ["library", 14.2], ["lobby", 10, {"gate": true, "name": "Old Quadrangle"}],
-			["class", 10, {"idx": 0}], ["computer", 12], ["detention", 8], ["store", 14.2]],
-		[["empty", 10, {"kids": true}], ["empty", 10], ["computer", 12], ["empty", 10, {"kids": true}], ["washroom", 8], ["empty", 10], ["art", 12], ["empty", 10], ["store", 16.4]],
-		[["lecture", 18], ["empty", 10], ["music", 10], ["empty", 10, {"kids": true}], ["washroom", 8], ["empty", 10], ["empty", 10], ["store", 22.4]],
+	# Where the east / west wings meet the long wings: no windows, a link doorway at x = ±32.
+	var hidden := [[-QX, -QX + 20.0], [QX - 20.0, QX]]
+	var b := {"blind": true}
+	# South wing: the main entrance faces the boulevard; its north side joins the east / west wings.
+	wing(Rect2(-QX, -110, QX * 2.0, 20), true, 3, [
+		[["staff", 12], ["office", 10], ["washroom", 10.2], ["lobby", 10, {"gate": true, "name": "Old Quadrangle"}],
+			["class", 10, {"idx": 0}], ["detention", 8], ["library", 14.2]],
+		[["empty", 10, {"kids": true}], ["computer", 12], ["empty", 10, {"kids": true}], ["washroom", 8], ["empty", 10], ["art", 12], ["store", 12.4]],
+		[["lecture", 18], ["music", 10], ["empty", 10, {"kids": true}], ["washroom", 8], ["empty", 10], ["store", 18.4]],
 	], [
-		[["lecture", 18], ["passage", 5], ["canteen", 26], ["passage", 10], ["art", 12], ["music", 10], ["empty", 12], ["passage", 5], ["lecture", 10]],
-		[["lecture", 18], ["empty", 10], ["empty", 10], ["empty", 10], ["music", 10], ["empty", 10], ["store", 10], ["lecture", 30]],
-		[["empty", 10], ["empty", 10], ["computer", 12], ["empty", 10], ["empty", 10], ["art", 12], ["empty", 10], ["lecture", 34]],
-	], {"title": c.UNI_NAME, "front": "a", "cams": [0, 1, 2], "notice": true, "alarm": true})
-	# East wing (courtyard on its west side).
-	wing(Rect2(34, -89.6, 20, 103.6), false, 3, [
-		[["passage", 6], ["empty", 10], ["washroom", 8], ["passage", 6], ["art", 12], ["empty", 10], ["passage", 6], ["store", 36]],
-		[["class", 10, {"idx": 1}], ["empty", 10], ["washroom", 8], ["empty", 10, {"kids": true}], ["computer", 12], ["store", 44]],
-		[["empty", 10], ["music", 10], ["empty", 10], ["lecture", 18], ["store", 46]],
+		[["washroom", 8, b], ["link", 4], ["store", 8, b], ["canteen", 19.5], ["passage", 5], ["music", 10], ["computer", 9.5],
+			["store", 8, b], ["link", 4], ["lecture", 8, b]],
+		[["empty", 8, b], ["link", 4], ["store", 8, b], ["empty", 11], ["empty", 11, {"kids": true}], ["music", 11], ["empty", 11],
+			["store", 8, b], ["link", 4], ["empty", 8, b]],
+		[["store", 8, b], ["link", 4], ["empty", 8, b], ["computer", 11], ["empty", 11], ["art", 11], ["empty", 11],
+			["store", 8, b], ["link", 4], ["store", 8, b]],
+	], {"title": c.UNI_NAME, "front": "a", "cams": [0, 1, 2], "notice": true, "alarm": true, "blind_b": hidden})
+	# East wing (courtyard on its west side), between the south and north wings.
+	wing(Rect2(QX - 20.0, -90, 20, 60), false, 3, [
+		[["passage", 6], ["empty", 10], ["washroom", 8], ["art", 12], ["empty", 14.4]],
+		[["class", 10, {"idx": 1}], ["empty", 10], ["washroom", 8], ["empty", 10, {"kids": true}], ["computer", 12.4]],
+		[["empty", 10], ["music", 10], ["empty", 10], ["lecture", 20.4]],
 	], [
-		[["computer", 12], ["empty", 10], ["store", 8], ["lecture", 18], ["empty", 10], ["empty", 10], ["store", 35.6]],
-		[["empty", 10], ["empty", 10, {"kids": true}], ["lecture", 18], ["empty", 10], ["store", 55.6]],
-		[["lecture", 18], ["empty", 10], ["empty", 10], ["art", 12], ["store", 53.6]],
-	], {"ends": [false, false], "cams": [1]})
+		[["computer", 12], ["empty", 10], ["store", 8], ["lecture", 18], ["empty", 12]],
+		[["empty", 10], ["empty", 10, {"kids": true}], ["lecture", 18], ["empty", 10], ["store", 12]],
+		[["lecture", 18], ["empty", 10], ["empty", 10], ["art", 12], ["store", 10]],
+	], {"ends": [false, false], "join": [true, true], "cams": [1]})
 	# West wing (courtyard on its east side).
-	wing(Rect2(-54, -89.6, 20, 103.6), false, 3, [
-		[["empty", 10], ["washroom", 8], ["computer", 12], ["empty", 10], ["store", 54.3]],
-		[["empty", 10], ["lecture", 18], ["empty", 10, {"kids": true}], ["store", 56.3]],
-		[["empty", 10], ["empty", 10], ["lab", 10, {"idx": 3}], ["washroom", 8], ["store", 56.3]],
+	wing(Rect2(-QX, -90, 20, 60), false, 3, [
+		[["empty", 10], ["washroom", 8], ["computer", 12], ["empty", 10], ["store", 10.4]],
+		[["empty", 10], ["lecture", 18], ["empty", 10, {"kids": true}], ["store", 12.4]],
+		[["empty", 10], ["empty", 10], ["lab", 10, {"idx": 3}], ["washroom", 8], ["store", 12.4]],
 	], [
-		[["passage", 6], ["empty", 10], ["passage", 6], ["music", 10], ["empty", 10], ["passage", 6], ["store", 55.6]],
-		[["empty", 10], ["computer", 12], ["empty", 10], ["art", 12], ["store", 59.6]],
-		[["lecture", 18], ["empty", 10], ["empty", 10, {"kids": true}], ["store", 65.6]],
-	], {"ends": [false, false], "cams": [2]})
+		[["passage", 6], ["empty", 10], ["passage", 6], ["music", 10], ["empty", 10], ["passage", 6], ["store", 12]],
+		[["empty", 10], ["computer", 12], ["empty", 10], ["art", 12], ["store", 16]],
+		[["lecture", 18], ["empty", 10], ["empty", 10, {"kids": true}], ["store", 22]],
+	], {"ends": [false, false], "join": [true, true], "cams": [2]})
 	# North wing: back door to the hostels (west end) and a locked staff door (east end).
-	wing(Rect2(-54, 14.4, 108, 20), true, 3, [
-		[["passage", 6], ["empty", 10], ["washroom", 8], ["lecture", 18], ["passage", 6], ["empty", 10], ["store", 40.4]],
-		[["empty", 10], ["empty", 10, {"kids": true}], ["computer", 12], ["empty", 10], ["washroom", 8], ["store", 48.4]],
-		[["empty", 10], ["empty", 10], ["class", 10, {"idx": 2}], ["empty", 10], ["washroom", 8], ["art", 12], ["store", 38.4]],
+	wing(Rect2(-QX, -30, QX * 2.0, 20), true, 3, [
+		[["store", 3.2, b], ["link", 4], ["washroom", 8, b], ["lecture", 19.5], ["passage", 5], ["empty", 10], ["art", 9.5],
+			["store", 8, b], ["link", 4], ["store", 3.2, b]],
+		[["store", 3.2, b], ["link", 4], ["empty", 8, b], ["empty", 11, {"kids": true}], ["computer", 11], ["empty", 11], ["washroom", 11],
+			["store", 8, b], ["link", 4], ["store", 3.2, b]],
+		[["store", 3.2, b], ["link", 4], ["empty", 8, b], ["class", 10, {"idx": 2}], ["empty", 10], ["washroom", 10], ["art", 14],
+			["store", 8, b], ["link", 4], ["store", 3.2, b]],
 	], [
-		[["empty", 10], ["lecture", 18], ["empty", 10], ["music", 10], ["store", 60]],
-		[["lecture", 18], ["empty", 10], ["art", 12], ["store", 68]],
-		[["empty", 10], ["lecture", 18], ["computer", 12], ["store", 68]],
-	], {"ends": [true, true], "title": "SOUTH WING", "front": "b", "cams": [0, 2]})
-	service_door(Vector3(54.0, 0, 24.4), false)
-	# Courtyard: court, lawns, a fountain and the assembly point.
-	slab(Rect2(-33.4, -89, 66.8, 102.8), 0.02, 0.08, P.GRASS, 0.02, P.GRASS_DARK)
-	walk_slab(Rect2(-3, -89, 6, 102.8))
-	walk_slab(Rect2(-33.4, -41, 66.8, 5))
-	court(Vector2(-18, -62))
-	_fountain(Vector2(16, -20))
-	assembly_point(Vector2(16, -60))
-	for p: Vector2 in [Vector2(-24, -20), Vector2(-24, 0), Vector2(-10, 4), Vector2(24, 4), Vector2(26, -80), Vector2(-28, -84)]:
+		[["empty", 10], ["lecture", 18], ["empty", 10], ["music", 10], ["store", 36]],
+		[["lecture", 18], ["empty", 10], ["art", 12], ["store", 44]],
+		[["empty", 10], ["lecture", 18], ["computer", 12], ["store", 44]],
+	], {"ends": [true, true], "title": "SOUTH WING", "front": "b", "cams": [0, 2], "blind_a": hidden})
+	service_door(Vector3(QX, 0, -20), false)
+	# Courtyard (x -22..22, z -90..-30): court, lawns, a fountain and the assembly point.
+	slab(Rect2(-21.4, -89.4, 42.8, 59.0), 0.02, 0.08, P.GRASS, 0.02, P.GRASS_DARK)
+	walk_slab(Rect2(-3, -89.4, 6, 59.0))
+	walk_slab(Rect2(-21.4, -62, 42.8, 5))
+	court(Vector2(-12.5, -77))
+	_fountain(Vector2(12.5, -44))
+	assembly_point(Vector2(12.5, -76))
+	for p: Vector2 in [Vector2(-17, -34), Vector2(-7, -34), Vector2(-18, -48), Vector2(19, -86), Vector2(-19, -87)]:
 		tree(p, 0)
-	for x: float in [-20.0, -10.0, 10.0, 20.0]:
-		bench(Vector2(x, -36))
-	nav_line(Vector2(0, -88), Vector2(0, 12))
-	nav_line(Vector2(-32, -38.5), Vector2(32, -38.5))
-	nav_line(Vector2(0, -114), Vector2(0, -88))
+	for x: float in [-16.0, -8.0]:
+		bench(Vector2(x, -55))
+	nav_line(Vector2(0, -89), Vector2(0, -31))
+	nav_line(Vector2(-20, -59.5), Vector2(20, -59.5))
+	nav_line(Vector2(0, -114), Vector2(0, -89))
 	c.staff_loops = {
-		"peon": [Vector3(-46, 0, -100), Vector3(46, 0, -100), Vector3(0, 0, -100), Vector3(0, 0, -60), Vector3(0, 0, 0), Vector3(0, 0, -60)],
-		"prefect": [Vector3(-30, 0, -38.5), Vector3(30, 0, -38.5), Vector3(0, 0, 10), Vector3(0, 0, -86)],
-		"proctor": [Vector3(44, 3.6, -82), Vector3(44, 3.6, 8), Vector3(-44, 3.6, -82), Vector3(-44, 3.6, 8)],
-		"vp": [Vector3(-46, 7.2, 24.4), Vector3(46, 7.2, 24.4), Vector3(-46, 7.2, -100), Vector3(46, 7.2, -100)],
+		"peon": [Vector3(-36, 0, -100), Vector3(36, 0, -100), Vector3(0, 0, -100), Vector3(0, 0, -60), Vector3(0, 0, -34), Vector3(0, 0, -60)],
+		"prefect": [Vector3(-18, 0, -59.5), Vector3(18, 0, -59.5), Vector3(0, 0, -33), Vector3(0, 0, -86)],
+		# The proctor walks the first-floor ring, the vice principal the second.
+		"proctor": [Vector3(32, 3.6, -86), Vector3(32, 3.6, -34), Vector3(-32, 3.6, -34), Vector3(-32, 3.6, -86)],
+		"vp": [Vector3(-36, 7.2, -20), Vector3(36, 7.2, -20), Vector3(32, 7.2, -60), Vector3(36, 7.2, -100), Vector3(-36, 7.2, -100), Vector3(-32, 7.2, -60)],
 	}
 	c.core_walks = [
-		[Vector3(-40, 0, -100), Vector3(40, 0, -100)],
-		[Vector3(-30, 0, -38.5), Vector3(30, 0, -38.5)],
-		[Vector3(-40, 3.6, -100), Vector3(40, 3.6, -100)],
-		[Vector3(-40, 0, 24.4), Vector3(40, 0, 24.4)],
-		[Vector3(44, 3.6, -80), Vector3(44, 3.6, 6)],
+		[Vector3(-36, 0, -100), Vector3(36, 0, -100)],
+		[Vector3(-18, 0, -59.5), Vector3(18, 0, -59.5)],
+		[Vector3(-36, 3.6, -100), Vector3(36, 3.6, -100)],
+		[Vector3(-36, 0, -20), Vector3(36, 0, -20)],
+		[Vector3(32, 3.6, -84), Vector3(32, 3.6, -36)],
 	]
 	finish_campus()
 
@@ -488,3 +503,4 @@ func _nav() -> void:
 	nav_line(Vector2(-55, -40), Vector2(-55, -150))
 	nav_line(Vector2(-194, 46), Vector2(-194, 94))
 	nav_line(Vector2(-194, -110), Vector2(-194, 30))
+	nav_line(Vector2(-QX - 3.0, -20), Vector2(-QX - 3.0, 38))

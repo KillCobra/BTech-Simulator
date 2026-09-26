@@ -5,13 +5,9 @@ Academy of Unnecessary Sciences. Sneak out of class, dodge teachers, guards and 
 friends, and escape the whole (very big) university before the final bell.
 
 ## Play (no install)
-`export/BunkMaster.exe` is the whole game in one file. Send it to friends.
-1. One player clicks **HOST**, picks a map (or Random) and a round length, customises their student, clicks **START CLASS**.
-2. Friends click **JOIN** with the host's IP. You can join a round already in progress, and rejoin
-   after a drop (your quests and score are kept).
-- Same Wi-Fi: use the LAN IP shown in the lobby.
-- Over the internet: everyone installs Tailscale or Radmin VPN and uses the host's VPN IP
-  (or the host forwards UDP port 7777).
+Download the latest release: `BunkMaster.zip` (Windows: extract it, keep the `.dll` next to `BunkMaster.exe`) or
+`BunkMaster-mac.zip`. Everyone plays through online sessions (below); you can join a round already in progress,
+and rejoin after a drop (your quests and score are kept).
 
 ## Mac
 `export/BunkMaster-mac.zip` holds `Bunk Master.app` (universal: Intel + Apple Silicon, macOS 11+).
@@ -20,30 +16,17 @@ unzip, move it to Applications, then **right-click > Open > Open**. If macOS say
 run once in Terminal: `xattr -cr "/Applications/Bunk Master.app"`. Mac and Windows players can play together
 (same version of the game on both).
 
-## Playing from different houses (online sessions, no accounts)
-1. Share `export/BunkMaster.zip` (Windows: exe + `libwebrtc_native...dll` in one folder) or the Mac zip.
-2. Host: **CREATE SESSION** → pick a session name (and an optional password) → you're in the lobby.
-3. Friends (up to 7): **JOIN SESSION** → type the same name (and password) → they connect and appear in the lobby.
-4. In the lobby everyone can change their name (it's what the others see all game) and classroom. Newcomers are
+## Online sessions (no accounts)
+1. Host: **CREATE SESSION** -> pick a session name (and an optional password) -> you're in the lobby.
+2. Friends (up to 7): **JOIN SESSION** -> type the same name (and password) -> they connect and appear in the lobby.
+3. In the lobby everyone can change their name (it's what the others see all game) and classroom. Newcomers are
    **NOT READY**; each friend clicks **I'M READY**, and the host's **START CLASS** unlocks once everyone is ready.
 
 How it works: the host announces the session on free public MQTT brokers (EMQX/HiveMQ/Mosquitto, several at once
 for redundancy); joiners find it there and swap WebRTC connection details, then play is direct peer-to-peer
-(STUN finds the route). Passwords are only sent as a hash. Works on most home and mobile networks; if a pair of
-networks is too strict (no connection after ~25 s), the other person should create the session, or try a phone
-hotspot, or Tailscale + JOIN BY IP. Manual invite codes remain as a fallback (link under the session form).
-
-## Playing on the same Wi-Fi
-1. Both players copy the game folder (same version) to their PCs.
-2. The host runs it and clicks **HOST**. The first time, Windows Firewall asks: tick both Private and Public and
-   click **Allow**. (Missed it? Windows Security > Firewall > Allow an app > add BunkMaster.exe.)
-3. The lobby shows what friends should type:
-   - **Same Wi-Fi/LAN:** the LAN IP (e.g. 192.168.0.9). Works straight away.
-   - **Over the internet:** the lobby says whether the router opened the port automatically (UPnP) and shows the
-     public IP. If it says UPnP is off or CGNAT, use a free VPN: both install **Tailscale** (or Radmin VPN), sign in
-     to the same network, and the friend joins with the host's Tailscale IP (100.x.x.x). Or forward UDP port 7777
-     on the host's router to the host PC.
-4. The friend types that IP in **HOST IP** and clicks **JOIN**. If it can't connect within 10 s the game says why.
+(STUN finds the route). Passwords are only sent as a hash. Works on most home networks; if a pair of networks is
+too strict (no connection after ~35 s, common on mobile data), the other person should create the session or one
+side should switch networks. Manual invite codes remain as a fallback (link under the session form).
 
 ## Controls
 WASD move · Shift sprint · Ctrl/C crouch · Space jump · E interact / pick up / drop ball
@@ -58,7 +41,8 @@ stall across the road. Learn the game here. Every other map has its **own, much 
 (many corridors, dozens of rooms, switchback stairwells, classrooms on upper floors) inside huge grounds
 300-450 m across. Escaping means getting out of the building *and* past the university's outer walls. Green stars
 on the big map (M, mouse wheel zoom, F to change floor) mark the ways out.
-- **Grand Campus** - the *Old Quadrangle*: four 3-storey wings round a courtyard (court, fountain). Outside:
+- **Grand Campus** - the *Old Quadrangle*: four 3-storey wings round a courtyard (court, fountain), joined on
+  every floor so you can walk the whole ring without going downstairs. Outside:
   boulevards, hostels, a stadium, a hedge maze and a lake. Out through the guarded main gate, a fence hole
   (crouch), a storm drain (crouch) or the construction site's scaffolding over the south wall.
 - **Whispering Pines** - *Pinewood Lodges*: two long 2-storey timber lodges joined by a Great Hall (an H) in a
@@ -77,7 +61,8 @@ in the big buildings the proctor and vice principal patrol the upper corridors.
 The main building has two floors. Ground: Class A, Class B, Computer Room, Seminar Hall. First floor:
 Class C, Lab, Music Room, Store Room, along a balcony watched by the proctor and a CCTV camera. Ramped stairs
 at both ends of the building start from the back. The minimap (bottom right) turns with you and shows your
-floor, friends, pings, nearby staff and your quest targets; the big map (M) shows the whole campus.
+floor, friends, pings, nearby staff and your quest targets; the big map (M) shows the whole campus. The floor
+you're on is also shown faintly at the top of the screen (it lights up when you change floors).
 
 ## School day
 - **Timetable:** the round is split into periods (2-6, by round length). Each class moves to a new room and
@@ -104,10 +89,12 @@ floor, friends, pings, nearby staff and your quest targets; the big map (M) show
   counter (E): Samosa Rs 10, Hall Pass Rs 40, Medical Note Rs 70, Detention Skip Rs 90 (used automatically when
   you're caught), and upgrades for the round (Signed passes: +15 s per hall pass, up to 3 levels; Soft shoes:
   staff hear you sprint from half as far). Trade with classmates from the phone.
-- **Phone (Q):** held in your right hand; the mouse taps its screen and you can still walk. Apps: Home (clock,
-  money, messages), Timetable (every period's subject, room and floor, attendance and test times), Wallet (money,
-  upgrades, pockets), Trade (give money or items to a classmate next to you), Tracker (shows staff for 5 s, names
-  on the nearest few only; 20 s to recharge).
+- **Phone (Q):** held in your right hand; the mouse taps its screen and you can still walk. The home screen shows
+  the time left and app tiles; tap one to open it (Esc or "Home" goes back). Today (money, tests, messages),
+  Timetable (every period's subject, room and floor, attendance and test times), Wallet (money, upgrades,
+  pockets), Trade (give money or items to a classmate next to you), Tracker (shows staff for 5 s, names on the
+  nearest few only; 20 s to recharge), Navigate (the shortest way to your seat on a little map, how far and which
+  stairs; SHOW ME THE WAY lights the route on the floor and your minimap for 10 s).
 - **Pings (T):** point at something and ping it: people are named (and the marker follows them), objects are
   named ("Fire alarm", "Locker", "Principal's car"...), anywhere else is a location ("Location: Near Canteen").
   Everyone in the session sees them.
@@ -153,12 +140,13 @@ builds wings of corridors, rooms and stairwells from room lists).
 Build the exe: `godot --headless --path . --export-release "Windows Desktop" export/BunkMaster.exe`
 (the preset uses the template in `export/templates/`; or install Godot's export templates and clear the custom path).
 
-Dev flags (after `--`): `--host --autostart=N --minutes=M --map=0..4 (-1 random)` · `--join=IP` · `--name=X --room=0..3` ·
+Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)` (private local round) ·
+`--session-host=NAME` / `--session-join=NAME` · `--name=X --room=0..3` ·
 `--at=x,z` · `--walk=x,z;!interact;!use1;!proxy;!wait2;!stand;!coin;!counter;!buy:samosa;!give10;!giveslot0;!bump;...`
 (test bot) · `--autoready` · `--no-staff` · `--trace` · `--cam=x,y,z,tx,ty,tz` · `--shot=file.png --shot_delay=S` ·
-`--bigmap` · `--quit-at-end` · `--phone=0..4` · `--shop` · `--scan` · `--ask` · `--typebot` · `--exam=0..3 --variant=0..2` ·
+`--bigmap` · `--quit-at-end` · `--phone=-1..5` (home / an app) · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot` · `--exam=0..3 --variant=0..2` ·
 bot actions `!ask:0..2` `!examphoto`
 
 ## Not included
 - Host migration: if the host quits, the round ends for everyone.
-- Steam invites: need a paid Steamworks app ID ($100) and the GodotSteam plugin. Direct IP / VPN works today.
+- Steam invites: need a paid Steamworks app ID ($100) and the GodotSteam plugin. Online sessions work today.

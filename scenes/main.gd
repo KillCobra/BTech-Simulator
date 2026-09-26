@@ -14,13 +14,10 @@ const GOLD := Color("ffc93c")
 const PANEL := Color(0.09, 0.09, 0.16, 0.84)
 
 var _ui: Control
-var _port := Network.DEFAULT_PORT  # dev: --port=N
-var _join_attempt := 0
 var _world: Node3D
 
 # Widgets that outlive the function that builds them.
 var _name_edit: LineEdit
-var _ip_edit: LineEdit
 var _room_picker: OptionButton
 var _status: Label
 var _lobby_list: VBoxContainer
@@ -121,8 +118,8 @@ func _load_preview_map(id: int) -> void:
 
 
 ## Dev shortcuts, passed after "--":
-##   --name=Raj --room=2 --host --autostart=2   host, start once 2 players are in
-##   --join=127.0.0.1                            join straight away
+##   --name=Raj --room=2 --host --autostart=1   private local round (tests, CI)
+##   --session-host=NAME / --session-join=NAME   online session between two games
 func _apply_dev_args() -> void:
 	var args := {}
 	for arg in OS.get_cmdline_user_args():
@@ -148,10 +145,12 @@ func _apply_dev_args() -> void:
 		Network.round_minutes = float(args.minutes)
 	if args.has("map"):  # dev: --map=N (0..3, -1 random)
 		Network.map_choice = int(args.map)
-	if args.has("port"):
-		_port = int(args.port)
 	if args.has("host"):
-		_on_host_pressed()
+		_apply_local_info()
+		if Network.host_local() != OK:
+			_status.text = "Couldn't start a local round."
+			return
+		_show_lobby()
 		if args.has("autostart"):
 			var needed := int(args.autostart)
 			var try_start := func():
@@ -159,9 +158,6 @@ func _apply_dev_args() -> void:
 					Network.start_game()
 			Network.players_changed.connect(try_start)
 			try_start.call()
-	elif args.has("join"):
-		_ip_edit.text = args.join
-		_on_join_pressed()
 	if args.has("session-host") or args.has("session-join"):
 		# Dev: --session-host=NAME / --session-join=NAME [--session-pw=X] [--autostart=N]
 		_apply_local_info()
@@ -349,24 +345,8 @@ func _show_menu(status: String) -> void:
 	_room_picker = _make_room_picker()
 	box.add_child(_field("CLASSROOM", _room_picker))
 
-	_ip_edit = LineEdit.new()
-	_ip_edit.text = Settings.get_meta("last_ip", "") if Settings.has_meta("last_ip") else ""
-	_ip_edit.placeholder_text = "Host's IP, e.g. 192.168.1.5"
-	box.add_child(_field("HOST IP (TO JOIN A FRIEND)", _ip_edit))
-	var mine := Label.new()
-	var lan := Network.local_ipv4_addresses()
-	mine.text = "This PC: %s   (same PC: 127.0.0.1)" % (", ".join(lan) if not lan.is_empty() else "no network")
-	mine.add_theme_font_size_override("font_size", 13)
-	mine.modulate = Color(1, 1, 1, 0.65)
-	box.add_child(mine)
-
-	var lan_row := HBoxContainer.new()
-	lan_row.add_theme_constant_override("separation", 12)
-	lan_row.add_child(_button("HOST (WI-FI)", _on_host_pressed, GOLD))
-	lan_row.add_child(_button("JOIN BY IP", _on_join_pressed, Color("7fd0ea")))
-	box.add_child(lan_row)
 	var online_caption := Label.new()
-	online_caption.text = "PLAYING FROM DIFFERENT HOUSES? MAKE AN ONLINE SESSION"
+	online_caption.text = "ONE PLAYER CREATES A SESSION, FRIENDS JOIN IT BY NAME"
 	online_caption.add_theme_font_size_override("font_size", 13)
 	online_caption.modulate = Color(1, 1, 1, 0.7)
 	box.add_child(online_caption)
@@ -389,8 +369,6 @@ func _show_menu(status: String) -> void:
 		_show_settings_in.call_deferred(panel, _show_menu.bind(""))
 		if OS.get_cmdline_user_args().has("--controls"):
 			(func(): panel.get_child(panel.get_child_count() - 1)._show_controls()).call_deferred()
-		if OS.get_cmdline_user_args().has("--relay"):
-			(func(): panel.get_child(panel.get_child_count() - 1).show_relay()).call_deferred()
 
 	if status != "":
 		print("[menu] %s" % status)
@@ -452,15 +430,7 @@ func _show_lobby() -> void:
 		_build_invite_panel(box)
 		hint.text = "Friends who connect show up above. You can invite more anytime."
 	elif Network.is_host():
-		var ips := ", ".join(Network.local_ipv4_addresses())
-		hint.text = "Same Wi-Fi / LAN: friends join with  %s\n%s" % [ips, Network.internet_text]
-		hint.autowrap_mode = TextServer.AUTOWRAP_WORD
-		hint.custom_minimum_size.x = 380
-		var update := func(text: String):
-			if is_instance_valid(hint):
-				hint.text = "Same Wi-Fi / LAN: friends join with  %s\n%s" % [ips, text]
-		Network.internet_status.connect(update)
-		hint.tree_exiting.connect(func(): Network.internet_status.disconnect(update))
+		hint.text = "Private round on this PC."
 	else:
 		hint.text = "Waiting for the host to start class..."
 	hint.add_theme_color_override("font_color", Color("9fd8ff"))
@@ -550,17 +520,10 @@ func _show_session_form(create: bool) -> void:
 	row.add_child(go)
 	row.add_child(_button("BACK", _show_menu.bind(""), Color("e7d2aa")))
 	box.add_child(row)
-	# Helpers in one row (keeps the form on a 720p screen): relay, network test, codes.
+	# Helpers in one row (keeps the form on a 720p screen): network test, firewall, codes.
 	var helpers := HBoxContainer.new()
 	helpers.add_theme_constant_override("separation", 6)
 	box.add_child(helpers)
-	if create:
-		var relay := _chip("Relay: ON" if Network.has_relay() else "Set up a relay", func():
-			var panel: PanelContainer = box.get_parent()
-			_show_settings_in(panel, _show_session_form.bind(true))
-			(panel.get_child(panel.get_child_count() - 1) as Node).show_relay.call_deferred(), Color("ffb37a") if not Network.has_relay() else Color("7fe0a0"))
-		relay.tooltip_text = "For friends on mobile data or strict Wi-Fi: a free relay that gets them through."
-		helpers.add_child(relay)
 	var test := _chip("Test my network", func():
 		status.text = "Testing your network (about 5 s)..."
 		var report: String = await Network.test_network()
@@ -1157,37 +1120,6 @@ func _return_to_menu(message: String) -> void:
 
 
 # --- Button handlers -------------------------------------------------------------------------
-
-func _on_host_pressed() -> void:
-	_apply_local_info()
-	var err := Network.host(_port)
-	if err != OK:
-		_status.text = "Could not host (is port %d already in use?)" % Network.DEFAULT_PORT
-		return
-	_show_lobby()
-
-
-func _on_join_pressed() -> void:
-	_apply_local_info()
-	var ip := _ip_edit.text.strip_edges()
-	if ip.is_empty():
-		_status.text = "Enter the host's IP address."
-		return
-	var err := Network.join(ip, _port)
-	if err != OK:
-		_status.text = "That doesn't look like a valid IP address."
-		return
-	Settings.set_meta("last_ip", ip)
-	_status.text = "Connecting to %s..." % ip
-	# ENet takes ~30 s to give up; fail sooner with advice.
-	var attempt := Time.get_ticks_msec()
-	_join_attempt = attempt
-	await get_tree().create_timer(10.0).timeout
-	if _join_attempt == attempt and not multiplayer.is_server() \
-			and multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
-		Network.leave()
-		_show_menu("Couldn't reach %s. Check: 1) the host clicked HOST and is in the lobby, 2) the IP is right, 3) the host's Windows Firewall allows Bunk Master, 4) over the internet the host needs port %d open or you both use Tailscale/Radmin VPN." % [ip, _port])
-
 
 func _on_room_changed(index: int) -> void:
 	Network.set_local_info(Network.local_info.name, index)

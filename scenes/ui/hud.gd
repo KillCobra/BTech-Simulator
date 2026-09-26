@@ -11,8 +11,61 @@ const ITEM_COLORS := {
 	"hall_pass": Color("9fd8ff"), "samosa": Color("e0a050"), "medical_note": Color("fbf6e8"),
 	"canteen_key": Color("ffd24a"), "library_book": Color("4f86e0"), "detention_ticket": Color("ff9a9a"),
 }
-const PHONE_APPS := ["Home", "Timetable", "Wallet", "Trade", "Tracker"]
+## Phone apps, in home-screen order (index = --phone=N). _phone_app -1 is the home screen.
+const PHONE_APPS := [
+	{"name": "Today", "icon": "clock", "color": Color("ffd24a")},
+	{"name": "Timetable", "icon": "calendar", "color": Color("7fd0ea")},
+	{"name": "Wallet", "icon": "wallet", "color": Color("7fe0a0")},
+	{"name": "Trade", "icon": "trade", "color": Color("ff9a3c")},
+	{"name": "Tracker", "icon": "radar", "color": Color("ff8aa8")},
+	{"name": "Navigate", "icon": "route", "color": Color("b07cff")},
+]
+const NAV_APP := 5
+const ROUTE_SHOW := 10.0  # seconds the Navigate trail stays on the floor and the minimap
 const MAX_STAFF_TAGS := 6  # phone tracker: only the nearest few get a name tag
+
+
+## A phone app's icon: a simple glyph drawn in ink on the tile.
+class AppIcon extends Control:
+	var kind := ""
+	const INK := Color("2a1a0e")
+
+	func _draw() -> void:
+		var c := size / 2.0
+		var w := 3.0
+		match kind:
+			"clock":
+				draw_arc(c, 15, 0, TAU, 32, INK, w, true)
+				draw_line(c, c + Vector2(0, -10), INK, w, true)
+				draw_line(c, c + Vector2(7, 3), INK, w, true)
+			"calendar":
+				draw_rect(Rect2(c + Vector2(-15, -12), Vector2(30, 27)), INK, false, w)
+				draw_rect(Rect2(c + Vector2(-15, -12), Vector2(30, 7)), INK)
+				for i in 3:
+					for j in 2:
+						draw_rect(Rect2(c + Vector2(-10 + i * 8, j * 7), Vector2(4, 4)), INK)
+			"wallet":
+				draw_rect(Rect2(c + Vector2(-16, -10), Vector2(32, 22)), INK, false, w)
+				draw_rect(Rect2(c + Vector2(4, -3), Vector2(12, 8)), INK)
+				draw_line(c + Vector2(-14, -10), c + Vector2(8, -17), INK, w, true)
+			"trade":
+				draw_line(c + Vector2(-14, -6), c + Vector2(12, -6), INK, w, true)
+				draw_colored_polygon(PackedVector2Array([c + Vector2(15, -6), c + Vector2(8, -12), c + Vector2(8, 0)]), INK)
+				draw_line(c + Vector2(14, 7), c + Vector2(-12, 7), INK, w, true)
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-15, 7), c + Vector2(-8, 1), c + Vector2(-8, 13)]), INK)
+			"radar":
+				draw_arc(c, 15, 0, TAU, 32, INK, w, true)
+				draw_arc(c, 8, 0, TAU, 24, INK, 2.0, true)
+				draw_line(c, c + Vector2(11, -11), INK, w, true)
+				draw_circle(c + Vector2(-6, 6), 2.5, INK)
+			"route":
+				var pts := PackedVector2Array([c + Vector2(-13, 13), c + Vector2(-13, 2), c + Vector2(4, 2), c + Vector2(4, -8)])
+				draw_polyline(pts, INK, w, true)
+				draw_circle(c + Vector2(-13, 13), 3.5, INK)
+				# Map pin at the end.
+				draw_circle(c + Vector2(10, -10), 6, INK)
+				draw_colored_polygon(PackedVector2Array([c + Vector2(5, -7), c + Vector2(15, -7), c + Vector2(10, 1)]), INK)
+				draw_circle(c + Vector2(10, -10), 2.2, Color.WHITE)
 
 ## Screen-space markers for pings and the phone's staff tracker.
 class Markers extends Control:
@@ -151,9 +204,26 @@ var _was_detention := false
 # Phone (Q): a small screen on the right, the phone itself in your right hand.
 var _phone: PanelContainer
 var _phone_body: VBoxContainer
-var _phone_app := 0
+var _phone_scroll: ScrollContainer
+var _phone_home: VBoxContainer
+var _phone_header: HBoxContainer
+var _phone_title: Label
+var _phone_clock: Label
+var _phone_sub: Label
+var _phone_time: Label
+var _phone_app := -1  # -1: home screen
 var _phone_tick := 0.0
-var _phone_tabs: Array[Button] = []
+# Navigate: the route to your seat, its map on the phone, and the glimpse on the floor / minimap.
+var _nav_map: Control
+var _nav_info: Label
+var _nav_btn: Button
+var _route: Array[Vector3] = []
+var _route_at := -100.0      # when the route was worked out (s)
+var _route_until := -100.0   # glimpse shown until (s)
+var _trail: Node3D
+var _floor_label: Label
+var _floor_seen := -1
+var _floor_flash := 0.0
 # Pappu Uncle's canteen shop.
 var _shop: PanelContainer
 var _shop_body: VBoxContainer
@@ -299,7 +369,7 @@ func _build_left_column() -> void:
 		if Network.online:
 			host.text = "Hosting online · invite more friends from the lobby"
 		else:
-			host.text = "Hosting · %s : %d" % [", ".join(Network.local_ipv4_addresses().slice(0, 2)), Network.host_port]
+			host.text = "Hosting a private round"
 		host.add_theme_font_size_override("font_size", 12)
 		host.modulate = Color(1, 1, 1, 0.6)
 		box.add_child(host)
@@ -374,6 +444,11 @@ func _build_banner() -> void:
 	column.position.y = 22
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(column)
+	# Which floor you're on: faint, brightens for a moment when you change floors.
+	_floor_label = _outlined("", 17)
+	_floor_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_floor_label.modulate.a = 0.45
+	column.add_child(_floor_label)
 	_banner = PanelContainer.new()
 	_banner.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_banner_label = Label.new()
@@ -661,9 +736,11 @@ func setup_map(campus: RefCounted) -> void:
 					game.variant = int(v.trim_prefix("--variant="))
 			add_child(game)
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		if arg.begins_with("--phone="):  # dev: --phone=0..4 opens that phone app
+		if arg.begins_with("--phone="):  # dev: --phone=-1..5 opens the home screen / that phone app
 			_phone_app = int(arg.trim_prefix("--phone="))
 			toggle_phone.call_deferred()
+		if arg == "--navshow":  # dev: the Navigate trail to your seat, a few seconds in
+			get_tree().create_timer(5.0).timeout.connect(func(): _route_until = _now() + ROUTE_SHOW)
 		if arg == "--scan":  # dev: staff tracker on, a few seconds in
 			get_tree().create_timer(6.0).timeout.connect(func():
 				var me: Node = get_parent().get_node("Players").get_node_or_null(str(multiplayer.get_unique_id()))
@@ -696,6 +773,10 @@ func _input(event: InputEvent) -> void:
 		return
 	if _ask != null and _ask.visible and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("raise_hand")):
 		close_questions()
+		get_viewport().set_input_as_handled()
+		return
+	if phone_open() and event.is_action_pressed("ui_cancel") and _phone_app != -1:
+		_show_app(-1)
 		get_viewport().set_input_as_handled()
 		return
 	if phone_open() and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("phone")):
@@ -735,6 +816,13 @@ func _refresh_maps(director: Node, me: Node, players: Node, npcs: Node) -> void:
 	_minimap.markers = _map_markers(director, me, players, npcs, here)
 	_minimap.queue_redraw()
 	_mini_caption.text = _floor_name(here) + "   ·   [%s] map" % GameInput.key_label("map")
+	_floor_label.visible = _campus.levels > 1 and not debug_camera
+	if here != _floor_seen:
+		_floor_label.text = _floor_name(here)
+		_floor_flash = 2.0 if _floor_seen != -1 else 0.0
+		_floor_seen = here
+	_floor_flash = maxf(0.0, _floor_flash - get_process_delta_time())
+	_floor_label.modulate.a = 0.45 + 0.55 * clampf(_floor_flash, 0.0, 1.0)
 
 	if not _big.visible:
 		return
@@ -1124,7 +1212,6 @@ func toggle_phone() -> void:
 	_phone.visible = true
 	if _mini_holder:
 		_mini_holder.visible = false
-	_phone_tick = 0.0
 	_show_app(_phone_app)
 	Sfx.play("click", -6.0, 1.3)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -1157,42 +1244,125 @@ func _build_phone() -> void:
 	carrier.modulate = Color(1, 1, 1, 0.6)
 	carrier.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	status_bar.add_child(carrier)
+	_phone_time = Label.new()
+	_phone_time.add_theme_font_size_override("font_size", 12)
+	_phone_time.modulate = Color(1, 1, 1, 0.8)
+	_phone_time.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_bar.add_child(_phone_time)
 	var close := Label.new()
 	close.text = "[%s] put away" % GameInput.key_label("phone")
 	close.add_theme_font_size_override("font_size", 12)
 	close.modulate = Color(1, 1, 1, 0.6)
 	status_bar.add_child(close)
 	col.add_child(status_bar)
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 4)
-	col.add_child(tabs)
+
+	# Home screen: the time left, then a grid of app tiles.
+	_phone_home = VBoxContainer.new()
+	_phone_home.add_theme_constant_override("separation", 6)
+	_phone_home.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(_phone_home)
+	_phone_clock = Label.new()
+	_phone_clock.add_theme_font_size_override("font_size", 48)
+	_phone_clock.add_theme_color_override("font_color", Color("ffd24a"))
+	_phone_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_phone_home.add_child(_phone_clock)
+	_phone_sub = Label.new()
+	_phone_sub.add_theme_font_size_override("font_size", 12)
+	_phone_sub.modulate = Color(1, 1, 1, 0.65)
+	_phone_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_phone_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_phone_sub.custom_minimum_size.x = 260
+	_phone_home.add_child(_phone_sub)
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y = 10
+	_phone_home.add_child(spacer)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 12)
+	_phone_home.add_child(grid)
 	for k in PHONE_APPS.size():
-		var b := Button.new()
-		b.text = PHONE_APPS[k]
-		b.focus_mode = Control.FOCUS_NONE
-		b.add_theme_font_size_override("font_size", 11)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.pressed.connect(_show_app.bind(k))
-		tabs.add_child(b)
-		_phone_tabs.append(b)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(scroll)
+		grid.add_child(_app_tile(k))
+
+	# An open app: a title bar with a back arrow, then its page.
+	_phone_header = HBoxContainer.new()
+	_phone_header.add_theme_constant_override("separation", 8)
+	col.add_child(_phone_header)
+	var back := _phone_button("◀ Home", _show_app.bind(-1), Color(1, 1, 1, 0.85))
+	back.add_theme_font_size_override("font_size", 12)
+	_phone_header.add_child(back)
+	_phone_title = Label.new()
+	_phone_title.add_theme_font_size_override("font_size", 16)
+	_phone_title.add_theme_color_override("font_color", Color("ffd24a"))
+	_phone_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_phone_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_phone_header.add_child(_phone_title)
+	_phone_scroll = ScrollContainer.new()
+	_phone_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_phone_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(_phone_scroll)
 	_phone_body = VBoxContainer.new()
 	_phone_body.add_theme_constant_override("separation", 6)
 	_phone_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_phone_body)
+	_phone_scroll.add_child(_phone_body)
 
 
+## A home-screen tile: a coloured rounded square with the app's glyph, its name under it.
+func _app_tile(k: int) -> Button:
+	var app: Dictionary = PHONE_APPS[k]
+	var tile := Button.new()
+	tile.focus_mode = Control.FOCUS_NONE
+	tile.custom_minimum_size = Vector2(82, 86)
+	tile.tooltip_text = app.name
+	tile.add_theme_stylebox_override("normal", _cached_card(Color(1, 1, 1, 0.0), 14, 4))
+	tile.add_theme_stylebox_override("hover", _cached_card(Color(1, 1, 1, 0.1), 14, 4))
+	tile.add_theme_stylebox_override("pressed", _cached_card(Color(1, 1, 1, 0.18), 14, 4))
+	tile.pressed.connect(func():
+		Sfx.play("click", -8.0, 1.5)
+		_show_app(k))
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 4)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(box)
+	var square := PanelContainer.new()
+	square.add_theme_stylebox_override("panel", _cached_card(app.color, 14, 0))
+	square.custom_minimum_size = Vector2(54, 54)
+	square.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	square.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(square)
+	var icon := AppIcon.new()
+	icon.kind = app.icon
+	icon.custom_minimum_size = Vector2(54, 54)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	square.add_child(icon)
+	var caption := Label.new()
+	caption.text = app.name
+	caption.add_theme_font_size_override("font_size", 12)
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(caption)
+	return tile
+
+
+## Opens an app (-1: the home screen).
 func _show_app(k: int) -> void:
-	_phone_app = k
-	for i in _phone_tabs.size():
-		var on := i == k
-		_phone_tabs[i].add_theme_stylebox_override("normal", _cached_card(Color("ffd24a") if on else Color(1, 1, 1, 0.1), 8, 4))
-		_phone_tabs[i].add_theme_stylebox_override("hover", _cached_card(Color("ffe39a") if on else Color(1, 1, 1, 0.2), 8, 4))
-		_phone_tabs[i].add_theme_color_override("font_color", Color("2a1a0e") if on else Color.WHITE)
-		_phone_tabs[i].add_theme_color_override("font_hover_color", Color("2a1a0e") if on else Color.WHITE)
+	_phone_app = clampi(k, -1, PHONE_APPS.size() - 1)
+	var home := _phone_app == -1
+	_phone_home.visible = home
+	_phone_header.visible = not home
+	_phone_scroll.visible = not home
+	for child in _phone_body.get_children():
+		_phone_body.remove_child(child)
+		child.queue_free()
+	_nav_map = null
+	if not home:
+		_phone_title.text = str(PHONE_APPS[_phone_app].name).to_upper()
+		_phone_title.add_theme_color_override("font_color", PHONE_APPS[_phone_app].color)
+		_phone_scroll.scroll_vertical = 0
+		if _phone_app == NAV_APP:
+			_build_navigate()
 	_phone_tick = 0.0  # redraw now
 
 
@@ -1207,6 +1377,16 @@ func _refresh_phone(director: Node, me: Node, st: Dictionary, delta: float) -> v
 	if _phone_tick > 0.0:
 		return
 	_phone_tick = 0.25
+	var left: float = director.round_time - director.elapsed
+	_phone_time.text = _clock(left)
+	if _phone_app == -1:
+		_phone_clock.text = _clock(left)
+		var room: int = director.current_room(multiplayer.get_unique_id())
+		_phone_sub.text = "until the final bell\n%s · %s" % [director.SUBJECTS[room], Network.CLASSROOMS[room]]
+		return
+	if _phone_app == NAV_APP:
+		_refresh_navigate(director, me, st)
+		return
 	for child in _phone_body.get_children():
 		_phone_body.remove_child(child)
 		child.queue_free()
@@ -1361,6 +1541,189 @@ func _app_tracker(me: Node) -> void:
 		_phone_text("Recharging...  %ds" % int(ceil(me.phone_ready - now)), 16, Color("ffb37a"))
 	else:
 		_phone_body.add_child(_phone_button("SCAN FOR STAFF", func(): me.scan_staff(), Color("7fe0a0")))
+
+
+# --- Phone: Navigate --------------------------------------------------------------------------------
+
+static func _now() -> float:
+	return Time.get_ticks_msec() / 1000.0
+
+
+## Where Navigate leads: your seat in this period's classroom (or the room itself).
+func _nav_target(director: Node, st: Dictionary) -> Vector3:
+	var seat: Vector3 = st.get("seat", Vector3.ZERO)
+	if seat != Vector3.ZERO:
+		return seat
+	var room: int = director.current_room(multiplayer.get_unique_id())
+	if room < _campus.classes.size():
+		var r: Rect2 = _campus.classes[room].rect
+		return Vector3(r.get_center().x, float(_campus.classes[room].y), r.get_center().y)
+	return Vector3.ZERO
+
+
+func _build_navigate() -> void:
+	_nav_info = _phone_text("Finding the way...", 13)
+	var frame := PanelContainer.new()
+	frame.add_theme_stylebox_override("panel", _cached_card(Color("0f1520"), 10, 3))
+	_phone_body.add_child(frame)
+	_nav_map = MapView.new()
+	_nav_map.custom_minimum_size = Vector2(262, 220)
+	_nav_map.clip_contents = true
+	_nav_map.set_shapes(_campus.map_shapes)
+	_nav_map.bounds = _campus.bounds
+	_nav_map.outside = _campus.map_outside
+	_nav_map.label_size = 9
+	_nav_map.show_names = false
+	_nav_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(_nav_map)
+	_nav_btn = _phone_button("SHOW ME THE WAY", func():
+		_route_at = -100.0  # work it out again from where you stand now
+		_route_until = _now() + ROUTE_SHOW
+		_phone_tick = 0.0
+		Sfx.play("click", -6.0, 1.8), Color("b07cff"))
+	_phone_body.add_child(_nav_btn)
+	_phone_text("Lights the way on the floor and on your minimap for %d s." % int(ROUTE_SHOW), 11, Color(1, 1, 1, 0.55))
+	_route_at = -100.0
+
+
+func _refresh_navigate(director: Node, me: Node, st: Dictionary) -> void:
+	if _nav_map == null or me == null:
+		return
+	if st.get("state", "") == "detention":
+		_nav_info.text = "You're in detention. Finish it first!"
+		_nav_map.route = []
+		_nav_map.queue_redraw()
+		return
+	var target := _nav_target(director, st)
+	var room: int = director.current_room(multiplayer.get_unique_id())
+	var here: int = _campus.level_of(me.global_position)
+	var there: int = _campus.level_of(target)
+	var length := 0.0
+	for i in _route.size() - 1:
+		length += _route[i].distance_to(_route[i + 1])
+	var where := "%s, %s" % [Network.CLASSROOMS[room], _floor_name(there).capitalize()]
+	if me.seated and me.global_position.distance_to(target) < 1.3:
+		_nav_info.text = "YOUR SEAT: %s\nYou're sitting in it. Nice." % where
+	else:
+		var how := "Follow the purple line."
+		if there > here:
+			how = "Take the stairs UP to the %s." % _floor_name(there).capitalize()
+		elif there < here:
+			how = "Take the stairs DOWN to the %s." % _floor_name(there).capitalize()
+		_nav_info.text = "YOUR SEAT: %s\nAbout %d m.  %s" % [where, int(round(length)), how]
+	# Fit the whole route on the little map.
+	var box := Rect2(Vector2(me.global_position.x, me.global_position.z), Vector2.ZERO)
+	for p in _route:
+		box = box.expand(Vector2(p.x, p.z))
+	box = box.expand(Vector2(target.x, target.z)).grow(8.0)
+	var map_size: Vector2 = _nav_map.size if _nav_map.size.x > 10.0 else _nav_map.custom_minimum_size
+	_nav_map.center = box.get_center()
+	_nav_map.zoom = clampf(minf(map_size.x / box.size.x, map_size.y / box.size.y), 0.6, 5.0)
+	_nav_map.level = here
+	_nav_map.route = _route_segments(here)
+	_nav_map.markers = [
+		{"at": Vector2(target.x, target.z), "kind": "seat", "text": ""},
+		{"at": Vector2(me.global_position.x, me.global_position.z), "kind": "me", "yaw": me.rotation.y},
+	]
+	_nav_map.queue_redraw()
+	var left := _route_until - _now()
+	_nav_btn.text = "SHOWING THE WAY  %ds" % int(ceil(left)) if left > 0.0 else "SHOW ME THE WAY"
+
+
+## Route as map segments: [from, to, on floor `level`].
+func _route_segments(level: int) -> Array:
+	var out := []
+	for i in _route.size() - 1:
+		var a := _route[i]
+		var b := _route[i + 1]
+		out.append([Vector2(a.x, a.z), Vector2(b.x, b.z), _campus.level_of(a) == level and _campus.level_of(b) == level])
+	return out
+
+
+## Every frame: keeps the route fresh while Navigate is open, and shows the
+## glimpse (a trail of glowing arrows on the floor + the line on the minimap).
+func _update_route(director: Node, me: Node, st: Dictionary) -> void:
+	var now := _now()
+	var nav_open := phone_open() and _phone_app == NAV_APP
+	var showing := now < _route_until
+	if me == null or (not nav_open and not showing):
+		if _trail:
+			_trail.queue_free()
+			_trail = null
+		if not _route.is_empty():
+			_route = []
+			_minimap.route = []
+			_big_map.route = []
+		return
+	# Recompute every 2 s while the app is open; the glimpse keeps the route it started with.
+	var fresh := now - _route_at > 2.0 and (nav_open or _trail == null)
+	if fresh:
+		var target := _nav_target(director, st)
+		_route = [] if target == Vector3.ZERO else director.route_to(me.global_position, target)
+		_route_at = now
+		_phone_tick = 0.0
+	if showing and (_trail == null or fresh):
+		_build_trail()
+	if not showing and _trail:
+		_trail.queue_free()
+		_trail = null
+	var here: int = _campus.level_of(me.global_position)
+	_minimap.route = _route_segments(here) if showing else []
+	_big_map.route = _route_segments(_big_map.level) if showing else []
+	if _trail:
+		var mm: MultiMesh = (_trail.get_child(0) as MultiMeshInstance3D).multimesh
+		var age: float = now - float(_trail.get_meta("born"))
+		mm.visible_instance_count = mini(mm.instance_count, int(age * 70.0) + 1)  # sweeps out from you
+		var mat: StandardMaterial3D = _trail.get_meta("mat")
+		mat.albedo_color.a = clampf(age / 0.3, 0.0, 1.0) * clampf((_route_until - now) / 1.5, 0.0, 1.0) * 0.9
+
+
+## Arrows every metre along the route, just above the floor, pointing the way.
+func _build_trail() -> void:
+	if _trail:
+		_trail.queue_free()
+		_trail = null
+	if _route.size() < 2 or not (get_parent() is Node3D):
+		return
+	var xforms: Array[Transform3D] = []
+	var carry := 0.6  # start a little ahead of your feet
+	for i in _route.size() - 1:
+		var a := _route[i]
+		var b := _route[i + 1]
+		var length := a.distance_to(b)
+		if length < 0.01:
+			continue
+		var dir := (b - a) / length
+		var flat := Basis(Vector3.UP, atan2(dir.x, dir.z)) * Basis(Vector3.RIGHT, PI / 2.0)
+		var d := carry
+		while d < length:
+			xforms.append(Transform3D(flat, a + dir * d + Vector3(0, 0.1, 0)))
+			d += 1.0
+		carry = d - length
+	var mesh := PrismMesh.new()
+	mesh.size = Vector3(0.36, 0.42, 0.04)  # a flat triangle: its tip points along the route
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(MapView.ROUTE, 0.0)
+	mat.no_depth_test = false
+	mesh.material = mat
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xforms.size()
+	for k in xforms.size():
+		mm.set_instance_transform(k, xforms[k])
+	mm.visible_instance_count = 0
+	var inst := MultiMeshInstance3D.new()
+	inst.multimesh = mm
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_trail = Node3D.new()
+	_trail.name = "RouteTrail"
+	_trail.set_meta("born", _now())
+	_trail.set_meta("mat", mat)
+	_trail.add_child(inst)
+	(get_parent() as Node3D).add_child(_trail)
 
 
 # --- Canteen shop ----------------------------------------------------------------------------
@@ -1594,6 +1957,7 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 	if _ask and _ask.visible and (st.get("state", "") != "class" or director.round_over):
 		close_questions()
 	_refresh_phone(director, me, st, delta)
+	_update_route(director, me, st)
 	_refresh_shop(director, me, st, delta)
 	var sus: float = st.sus
 	_update_danger(delta, st)

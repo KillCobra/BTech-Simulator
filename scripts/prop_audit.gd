@@ -46,8 +46,9 @@ func _audit(id: int) -> void:
 	# Spatial grid (xz) of box indices.
 	var grid := {}
 	for i in n:
-		for gx in range(floori(lo[i].x / CELL), floori(hi[i].x / CELL) + 1):
-			for gz in range(floori(lo[i].z / CELL), floori(hi[i].z / CELL) + 1):
+		# Padded by EPS: boxes that touch across a cell edge must share a cell.
+		for gx in range(floori((lo[i].x - EPS) / CELL), floori((hi[i].x + EPS) / CELL) + 1):
+			for gz in range(floori((lo[i].z - EPS) / CELL), floori((hi[i].z + EPS) / CELL) + 1):
 				var key := Vector2i(gx, gz)
 				if not grid.has(key):
 					grid[key] = PackedInt32Array()

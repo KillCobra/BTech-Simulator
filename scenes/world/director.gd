@@ -2343,6 +2343,17 @@ func _nearest_node(pos: Vector3) -> int:
 	return order[0] if not order.is_empty() else -1
 
 
+## Walking route from `from` to `to` (both included) over the waypoint graph.
+## Works on any peer: the phone's Navigate app uses it; builds the graph on first use.
+func route_to(from: Vector3, to: Vector3) -> Array[Vector3]:
+	if _adj.is_empty():
+		_build_graph()
+		_graph_ready = true
+	var out: Array[Vector3] = [from]
+	out.append_array(_path(from, to))
+	return out
+
+
 func _path(from: Vector3, to: Vector3) -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	if _clear(from, to) or _adj.is_empty():

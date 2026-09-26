@@ -10,7 +10,7 @@ const SECTION := "settings"
 ## Keys that are saved/loaded, in file order.
 const KEYS := [
 	"mouse_sensitivity", "fov", "master_volume", "music_volume", "sfx_volume",
-	"quality", "fullscreen", "player_name", "smooth_edges", "relay_url", "relay_user", "relay_pass",
+	"quality", "fullscreen", "player_name", "smooth_edges",
 ]
 
 enum Quality { LOW, MEDIUM, HIGH }
@@ -23,10 +23,6 @@ var sfx_volume := 0.9 ## Linear 0 - 1.
 var quality := 2 ## 0 Low, 1 Medium, 2 High.
 var fullscreen := false
 var smooth_edges := false ## Temporal anti-aliasing: no edge shimmer, slightly softer in motion.
-## Optional TURN relay for online sessions on strict networks (e.g. a free ExpressTURN account).
-var relay_url := ""
-var relay_user := ""
-var relay_pass := ""
 var player_name := "Student"
 
 
@@ -114,8 +110,6 @@ func _assign(key: String, value: Variant) -> void:
 			fullscreen = bool(value)
 		"smooth_edges":
 			smooth_edges = bool(value)
-		"relay_url", "relay_user", "relay_pass":
-			set(key, str(value).strip_edges())
 		"player_name":
 			var s := str(value).strip_edges()
 			player_name = s if not s.is_empty() else "Student"

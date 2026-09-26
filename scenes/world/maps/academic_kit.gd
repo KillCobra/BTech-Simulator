@@ -121,8 +121,14 @@ func klight(pos: Vector3, energy := 0.9, rng_m := 8.5) -> void:
 ##   "title": String, "front": "a"/"b"   big name board on the roof edge
 ##   "cams": [storeys]      a corridor camera on these storeys
 ##   "no_stairs": true      single-storey wing
+##   "join": [true, true]   no end wall at the start / end: the wing runs into the side of
+##                          another wing, whose "link" room opens into this corridor
+##   "blind_a"/"blind_b": [[u0, u1], ...]  no outside windows there (another wing is in the way)
+## A "link" room is a short passage with a doorway through its outside wall on every storey,
+## lined up with the corridor of a wing that joins there.
 func wing(rect: Rect2, along_x: bool, floors: int, rooms_a: Array, rooms_b: Array, opts := {}) -> void:
-	var W := {"rect": rect, "along_x": along_x, "floors": floors}
+	var W := {"rect": rect, "along_x": along_x, "floors": floors,
+		"blind_a": opts.get("blind_a", []), "blind_b": opts.get("blind_b", [])}
 	W.u0 = rect.position.x if along_x else rect.position.y
 	W.u1 = rect.end.x if along_x else rect.end.y
 	W.v0 = rect.position.y if along_x else rect.position.x
@@ -196,7 +202,7 @@ func _room(W: Dictionary, k: int, side: String, u0: float, u1: float, kind: Stri
 	# Corridor wall: a door near the far end, a wide opening for halls.
 	var holes := []
 	match kind:
-		"lobby", "passage", "stairs":
+		"lobby", "passage", "stairs", "link":
 			holes = [[um - F.w / 2.0 + 0.6, um + F.w / 2.0 - 0.6, 0.0, 2.7]]
 		"detention":
 			holes = []
@@ -206,11 +212,19 @@ func _room(W: Dictionary, k: int, side: String, u0: float, u1: float, kind: Stri
 		c._wall(along_x, u0, u1, edge, holes, din, dhall)
 	else:
 		c._wall(along_x, u0, u1, edge, holes, dhall, din)
-	if holes.size() == 1 and kind not in ["lobby", "passage", "stairs"]:
+	if holes.size() == 1 and kind not in ["lobby", "passage", "stairs", "link"]:
 		_door_leaf(F, kind)
 	# Outside wall: windows (open ones on the ground floor are escape routes).
 	var wins := []
-	if kind in ["lobby", "passage"] and k == 0:
+	var blind := false
+	for b: Array in W.get("blind_" + side, []):
+		if u0 < float(b[1]) - 0.01 and u1 > float(b[0]) + 0.01:
+			blind = true
+	if kind == "link":
+		wins = [[um - 1.3, um + 1.3, 0.0, 2.6]]
+	elif blind:
+		wins = []
+	elif kind in ["lobby", "passage"] and k == 0:
 		wins = [[um - 1.5, um + 1.5, 0.0, 2.7]]
 	elif kind != "stairs":
 		var n: int = maxi(1, int(F.w / 4.0))
@@ -250,17 +264,18 @@ func _room(W: Dictionary, k: int, side: String, u0: float, u1: float, kind: Stri
 		"office": _office(F, data)
 		"art": _art_room(F)
 		"passage": _passage(F)
+		"link": _link(F)
 		"stairs": pass
 		_: _store_room(F)
 	# Nav: both sides of the door.
-	var door_l: float = F.w / 2.0 - 1.5 if kind not in ["lobby", "passage"] else 0.0
+	var door_l: float = F.w / 2.0 - 1.5 if kind not in ["lobby", "passage", "link"] else 0.0
 	if kind not in ["detention", "stairs"]:
 		c.nav_points.append(fp(F, door_l, 0, -0.9) + oy())
 		c.nav_points.append(fp(F, door_l, 0, 1.0) + oy())
 		if kind in ["class", "lab", "empty"]:
 			for q: Vector2 in [Vector2(-0.75, 1.0), Vector2(-0.75, F.d - 2.2), Vector2(0, F.d - 0.8)]:
 				c.nav_points.append(fp(F, q.x, 0, q.y) + oy())
-		elif kind in ["lobby", "passage"]:
+		elif kind in ["lobby", "passage", "link"]:
 			c.nav_points.append(fp(F, 0, 0, F.d / 2.0) + oy())
 
 
@@ -273,7 +288,7 @@ func _room_color(kind: String, data: Dictionary) -> Color:
 		"canteen": return Color("ffd24a")
 		"washroom": return Color("bfe3ea")
 		"detention": return Color("c9a0a0")
-		"lobby", "passage": return Color("e7d2aa")
+		"lobby", "passage", "link": return Color("e7d2aa")
 		"stairs": return P.STONE_DARK
 	return Color("b9b0a4")
 
@@ -342,7 +357,10 @@ func _corridor(W: Dictionary, k: int, opts: Dictionary) -> void:
 
 func _end_walls(W: Dictionary, k: int, opts: Dictionary) -> void:
 	var ends: Array = opts.get("ends", [true, true])
+	var join: Array = opts.get("join", [false, false])
 	for i in 2:
+		if join[i]:
+			continue  # runs into another wing: that wing's wall (and link doorway) closes this end
 		var u: float = W.u0 if i == 0 else W.u1
 		var holes := []
 		if k == 0 and ends[i]:
@@ -708,6 +726,13 @@ func _lobby(F: Dictionary, k: int, data: Dictionary) -> void:
 	var title: String = data.get("name", "")
 	if title != "":
 		label(title.to_upper(), fp(F, 0, 2.95, D + 0.2), 56, Color("ffd24a"), fyaw(F) + PI, 12)
+
+
+## Link between wings: stone floor, a sill across the doorway into the other wing.
+func _link(F: Dictionary) -> void:
+	_floor(F, P.STONE, P.STONE_DARK)
+	fb(F, 0, 0.0125, F.d, 2.6, 0.025, WT + 0.4, P.STONE_DARK, 0.0)
+	c.nav_points.append(fp(F, 0, 0, F.d + 1.2) + oy())
 
 
 func _passage(F: Dictionary) -> void:

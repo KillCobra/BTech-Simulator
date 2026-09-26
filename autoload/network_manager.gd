@@ -1,5 +1,6 @@
 extends Node
-## Listen-server networking: one player hosts, friends join by IP.
+## Listen-server networking over WebRTC: one player creates an online session,
+## friends join it by name (or with manual invite codes).
 ## The host (peer 1) owns the player list and decides when the game starts.
 
 signal players_changed
@@ -12,7 +13,6 @@ signal all_loaded          # server only: every peer has the world scene ready
 signal late_joined(id: int) # server only: someone loaded into a round already running
 signal player_left(id: int) # server only
 signal player_leaving(id: int) # server only: fired before their info is removed
-signal internet_status(text: String) # host: result of trying to open the router port
 signal invite_ready(code: String)      # online host: code to send the next friend
 signal reply_ready(code: String)       # online joiner: code to send back to the host
 signal online_error(text: String)
@@ -23,12 +23,11 @@ const ICE_SERVERS := {"iceServers": [{"urls": [
 	"stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.cloudflare.com:3478",
 ]}]}
 
-var online := false        # true when using invite codes (WebRTC) instead of IP (ENet)
+var online := false        # true once in an online session or invite-code game
 var last_invite := ""      # online host: newest invite code, for when the lobby is rebuilt
 var _pending := {}         # online host: peer id -> WebRTCPeerConnection waiting for a reply
 var _next_online_id := 2
 
-const DEFAULT_PORT := 7777
 const MAX_PLAYERS := 8
 const CLASSROOMS := ["Class A", "Class B", "Class C", "Lab"]
 const ROUND_LENGTHS := [5, 8, 12, 20]
@@ -43,13 +42,8 @@ var current_map := 0  # the map this round is played on (same on every peer)
 
 var loaded_peers: Array = []  # replicated: peers whose world is ready for replication
 
-var internet_text := ""   # host: what to tell friends joining over the internet
-var host_port := DEFAULT_PORT
-
 var _loaded := {}
 var _all_loaded_sent := false
-var _upnp: UPNP
-var _upnp_thread: Thread
 
 
 ## Replication filter: only send world nodes to peers that have the world loaded,
@@ -70,16 +64,15 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 
-func host(port := DEFAULT_PORT) -> Error:
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, MAX_PLAYERS)
+## Dev/CI (`--host`): a private round on this PC that nobody else can join.
+func host_local() -> Error:
+	var peer := WebRTCMultiplayerPeer.new()
+	var err := peer.create_server()
 	if err != OK:
 		return err
 	multiplayer.multiplayer_peer = peer
-	host_port = port
 	_reset_session()
 	_register(local_info)
-	_open_router_port(port)
 	return OK
 
 
@@ -105,7 +98,6 @@ var _my_conn: WebRTCPeerConnection
 var _join_reply := {}      # joiner: welcome/deny from host
 var _announce_time := 0.0
 var _routes := {"mine": {}, "theirs": {}}  # joiner: kinds of connection routes found on each side
-var _relay_of := {}        # host: client id -> the relay that joiner offered us
 
 
 static func _hash(text: String) -> String:
@@ -177,7 +169,7 @@ func create_session(name: String, password: String) -> String:
 	_mqtt.subscribe(_base + "/info")
 	if not await _wait_for(func(): return _mqtt != null and _mqtt.is_ready, 8.0):
 		_stop_mqtt()
-		return "Couldn't reach the matchmaking servers. Check your internet, or use JOIN BY IP / manual codes."
+		return "Couldn't reach the matchmaking servers. Check your internet, or use manual codes."
 	await _wait_for(func(): return not _info.is_empty(), 1.5)  # a live session with this name?
 	if _session_alive(_info) and _info.get("from", "") != _cid:
 		_stop_mqtt()
@@ -221,7 +213,7 @@ func join_session(name: String, password: String) -> String:
 	_mqtt.subscribe(_base + "/c/" + _cid)
 	if not await _wait_for(func(): return _mqtt != null and _mqtt.is_ready, 8.0):
 		_stop_mqtt()
-		return "Couldn't reach the matchmaking servers. Check your internet, or use JOIN BY IP / manual codes."
+		return "Couldn't reach the matchmaking servers. Check your internet, or use manual codes."
 	await _wait_for(func(): return _session_alive(_info), 4.0)
 	if not _session_alive(_info):
 		_stop_mqtt()
@@ -231,7 +223,7 @@ func join_session(name: String, password: String) -> String:
 		return "\"%s\" is password protected. Enter the password." % name
 	_join_reply = {}
 	_send(_base + "/host", {"kind": "join", "pw": _hash(name.to_lower() + "|" + password) if password != "" else "",
-		"name": str(local_info.name), "relay": my_relay()})
+		"name": str(local_info.name)})
 	if not await _wait_for(func(): return not _join_reply.is_empty(), 8.0):
 		_stop_mqtt()
 		return "The host didn't answer. Ask them to check they're still in the lobby."
@@ -248,7 +240,7 @@ func join_session(name: String, password: String) -> String:
 	_reset_session()
 	online = true
 	session_name = name
-	_my_conn = _new_connection(_join_reply.get("relay", {}))
+	_my_conn = _new_connection()
 	var to_host := _base + "/host"
 	_my_conn.session_description_created.connect(func(type: String, sdp: String):
 		_my_conn.set_local_description(type, sdp)
@@ -295,8 +287,7 @@ func _host_message(data: Dictionary) -> void:
 			var id := _next_online_id
 			_next_online_id += 1
 			_cid_of[id] = cid
-			_relay_of[cid] = data.get("relay", {})
-			_send(reply_to, {"kind": "welcome", "id": id, "relay": my_relay()})
+			_send(reply_to, {"kind": "welcome", "id": id})
 		"offer":
 			var id := -1
 			for pid in _cid_of:
@@ -305,7 +296,7 @@ func _host_message(data: Dictionary) -> void:
 			var peer := multiplayer.multiplayer_peer as WebRTCMultiplayerPeer
 			if id == -1 or peer == null or _conn_by_cid.has(cid):
 				return
-			var conn := _new_connection(_relay_of.get(cid, {}))
+			var conn := _new_connection()
 			conn.session_description_created.connect(func(type: String, sdp: String):
 				conn.set_local_description(type, sdp)
 				_send(reply_to, {"kind": "answer", "sdp": sdp}))
@@ -345,7 +336,6 @@ func _leave_session() -> void:
 	_stop_mqtt()
 	session_name = ""
 	_cid_of.clear()
-	_relay_of.clear()
 	_conn_by_cid.clear()
 	_early_cands.clear()
 	_my_conn = null
@@ -396,8 +386,6 @@ func new_invite() -> void:
 		online_error.emit("Couldn't create an invite. Is the internet connected?")
 		return
 	offer.i = id
-	if not my_relay().is_empty():
-		offer.r = my_relay()
 	last_invite = InviteCode.encode(offer)
 	invite_ready.emit(last_invite)
 
@@ -430,7 +418,7 @@ func join_online(code: String) -> String:
 	multiplayer.multiplayer_peer = peer
 	_reset_session()
 	online = true
-	var conn := _new_connection(data.get("r", {}))
+	var conn := _new_connection()
 	peer.add_peer(conn, 1)
 	var answer := await _describe(conn, data.s, data.get("c", []))
 	if answer.is_empty():
@@ -441,8 +429,8 @@ func join_online(code: String) -> String:
 	return ""
 
 
-## Dev: --share=relay / --share=srflx only offers that kind of route (tests
-## the relay path between two games on one PC).
+## Dev: --share=srflx only offers that kind of route (tests the internet path
+## between two games on one PC).
 func _share_candidate(cand: String) -> bool:
 	_routes.mine[cand.get_slice(" ", 7)] = true
 	if OS.get_cmdline_user_args().has("--net-trace"):
@@ -453,55 +441,10 @@ func _share_candidate(cand: String) -> bool:
 	return true
 
 
-## `their_relay`: the relay the other player offered in matchmaking, used when
-## we have none of our own. Both ends then get a relayed route, which matters on
-## mobile data: carriers can reach the relay from a different public address
-## than the one they announced, and a relay only accepts pre-approved addresses.
-func _new_connection(their_relay: Variant = {}) -> WebRTCPeerConnection:
+func _new_connection() -> WebRTCPeerConnection:
 	var conn := WebRTCPeerConnection.new()
-	var relay: Dictionary = my_relay()
-	if relay.is_empty() and their_relay is Dictionary:
-		relay = their_relay
-	conn.initialize(ice_config(str(relay.get("url", "")), str(relay.get("user", "")), str(relay.get("pass", ""))))
+	conn.initialize(ICE_SERVERS)
 	return conn
-
-
-## Our relay as {"url", "user", "pass"}, or {} when none is set up.
-func my_relay() -> Dictionary:
-	if OS.get_cmdline_user_args().has("--no-own-relay"):  # dev: act like a friend without one
-		return {}
-	if relay_url(str(Settings.relay_url)) == "":
-		return {}
-	return {"url": str(Settings.relay_url), "user": str(Settings.relay_user), "pass": str(Settings.relay_pass)}
-
-
-## STUN (find our public address) plus, if given, a TURN relay for networks
-## that block direct connections (mobile data, carrier-grade NAT).
-func ice_config(url := "", user := "", pw := "") -> Dictionary:
-	var servers: Array = (ICE_SERVERS.iceServers as Array).duplicate(true)
-	var relay := relay_url(url)
-	if relay != "":
-		servers.append({"urls": [relay], "username": user, "credential": pw})
-	return {"iceServers": servers}
-
-
-## "relay1.expressturn.com:3478" or "turn:host:port?transport=udp" -> "turn:host:port".
-## (The WebRTC library in this build relays over UDP only.)
-static func relay_url(text: String) -> String:
-	var t := text.strip_edges()
-	if t == "":
-		return ""
-	for prefix in ["turns:", "turn:", "stun:"]:
-		if t.begins_with(prefix):
-			t = t.trim_prefix(prefix)
-	t = t.split("?")[0].split("/")[0]
-	if not ":" in t:
-		t += ":3478"
-	return "turn:" + t
-
-
-func has_relay() -> bool:
-	return str(Settings.relay_url) != ""
 
 
 ## Menu check: can this network carry game traffic (UDP), and how strict is
@@ -549,17 +492,14 @@ func test_network() -> String:
 		if ports.size() == 1:
 			lines.append("NAT: easy. Direct connections should work.")
 		else:
-			lines.append("NAT: strict. Direct connections can fail; the host should set up a relay (it works with this network).")
+			lines.append("NAT: strict. Direct connections can fail on this network; a phone hotspot on one side usually helps.")
 	var link := MqttLink.new()
 	add_child(link)
 	link.start()
 	await _wait_for(func(): return link.is_ready, 6.0)
-	lines.append("Matchmaking servers: %s." % ("reachable" if link.is_ready else "NOT reachable (sessions can't be found; use JOIN BY IP)"))
+	lines.append("Matchmaking servers: %s." % ("reachable" if link.is_ready else "NOT reachable (sessions can't be found; use manual codes)"))
 	link.stop()
 	link.queue_free()
-	if has_relay():
-		var problem: String = await test_relay(str(Settings.relay_url), str(Settings.relay_user), str(Settings.relay_pass))
-		lines.append("Your relay: %s." % ("works" if problem == "" else "NOT working (check its details)"))
 	return "\n".join(lines)
 
 
@@ -621,42 +561,18 @@ static func _stun_port(p: PackedByteArray) -> int:
 
 
 ## Joiner, after a failed connection: which side's network is the problem.
-## (host = local address, srflx = internet address via UDP, relay = TURN relay.)
+## (host = local address, srflx = internet address via UDP.)
 func explain_failure() -> String:
 	var mine: Dictionary = _routes.mine
 	var theirs: Dictionary = _routes.theirs
 	var line := "Routes: you %s, host %s." % ["+".join(mine.keys()) if mine else "none", "+".join(theirs.keys()) if theirs else "none"]
 	if theirs.is_empty():
 		return "No connection details arrived from the host (the matchmaking servers dropped them). Just try JOIN again.\n" + line
-	if not mine.has("srflx") and not mine.has("relay"):
+	if not mine.has("srflx"):
 		return "YOUR network blocks game traffic (UDP), common on college/office Wi-Fi. Switch to a phone hotspot or mobile data.\n" + line
-	if not theirs.has("srflx") and not theirs.has("relay"):
+	if not theirs.has("srflx"):
 		return "The HOST's network blocks game traffic (UDP), common on college/office Wi-Fi. The host should switch to a phone hotspot or mobile data.\n" + line
-	if not mine.has("relay") and not theirs.has("relay"):
-		return "Your networks block a direct connection. Fix: the host sets up a free relay (CREATE SESSION → \"Set up a free relay\"), then join again.\n" + line
-	return "Even the relay couldn't get through; one network is probably blocking game traffic (UDP). Try a phone hotspot on one side.\n" + line
-
-
-## Checks a relay by asking it for a relayed address. Returns "" if it works.
-func test_relay(url: String, user: String, pw: String) -> String:
-	if relay_url(url) == "":
-		return "Enter the relay server first."
-	var conn := WebRTCPeerConnection.new()
-	if conn.initialize({"iceServers": [{"urls": [relay_url(url)], "username": user, "credential": pw}]}) != OK:
-		return "That server address doesn't look right."
-	conn.create_data_channel("test", {"negotiated": true, "id": 1})
-	var got := [false]
-	conn.session_description_created.connect(func(type: String, sdp: String): conn.set_local_description(type, sdp))
-	conn.ice_candidate_created.connect(func(_media: String, _index: int, cand: String):
-		if " typ relay" in cand:
-			got[0] = true)
-	conn.create_offer()
-	var start := Time.get_ticks_msec()
-	while Time.get_ticks_msec() - start < 9000 and not got[0]:
-		await get_tree().process_frame
-		conn.poll()
-	conn.close()
-	return "" if got[0] else "The relay didn't answer. Check the server, username and password (copy them again from the relay's dashboard)."
+	return "Your networks block a direct connection (strict NAT, common on mobile data). Try a different network on one side, e.g. home Wi-Fi or another phone's hotspot.\n" + line
 
 
 ## Creates our side's description (offer, or answer to remote_sdp) and gathers
@@ -684,87 +600,8 @@ func _describe(conn: WebRTCPeerConnection, remote_sdp: String, remote_candidates
 	return result if result.s != "" else {}
 
 
-# --- Internet play: ask the router to forward our port (UPnP) ------------------------
-
-func _open_router_port(port: int) -> void:
-	internet_text = "Checking your router for internet play..."
-	internet_status.emit(internet_text)
-	if _upnp_thread and _upnp_thread.is_started():
-		return
-	_upnp_thread = Thread.new()
-	_upnp_thread.start(_upnp_work.bind(port))
-
-
-func _upnp_work(port: int) -> void:
-	var upnp := UPNP.new()
-	var result := upnp.discover(2500, 2, "InternetGatewayDevice")
-	var gateway := upnp.get_gateway()
-	if result != UPNP.UPNP_RESULT_SUCCESS or gateway == null or not gateway.is_valid_gateway():
-		_upnp_done.call_deferred(null, "", "Router didn't allow automatic setup (UPnP off).")
-		return
-	if upnp.add_port_mapping(port, port, "Bunk Master", "UDP", 0) != UPNP.UPNP_RESULT_SUCCESS:
-		_upnp_done.call_deferred(null, "", "Router refused to open port %d." % port)
-		return
-	_upnp_done.call_deferred(upnp, upnp.query_external_address(), "")
-
-
-func _upnp_done(upnp: UPNP, external_ip: String, error: String) -> void:
-	if _upnp_thread:
-		_upnp_thread.wait_to_finish()
-	if not multiplayer.is_server() or multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
-		if upnp:
-			upnp.delete_port_mapping(host_port, "UDP")  # host already left
-		return
-	var p := host_port
-	if upnp == null:
-		internet_text = "Internet: %s Friends outside your Wi-Fi need Tailscale/Radmin VPN, or forward UDP port %d on your router." % [error, p]
-	elif _is_private(external_ip):
-		_upnp = upnp
-		internet_text = "Internet: your provider shares one public IP between homes (CGNAT), so direct internet joining won't work. Use Tailscale or Radmin VPN (both free)."
-	else:
-		_upnp = upnp
-		internet_text = "Internet: friends anywhere can join with  %s  (port %d opened on your router)." % [external_ip, p]
-	print("[net] %s" % internet_text)
-	internet_status.emit(internet_text)
-
-
-func _close_router_port() -> void:
-	if _upnp:
-		_upnp.delete_port_mapping(host_port, "UDP")
-		_upnp = null
-
-
-static func _is_private(ip: String) -> bool:
-	if ip == "" or ip.begins_with("10.") or ip.begins_with("192.168.") or ip.begins_with("127."):
-		return true
-	var parts := ip.split(".")
-	if parts.size() != 4:
-		return false
-	var a := int(parts[0])
-	var b := int(parts[1])
-	return (a == 172 and b >= 16 and b <= 31) or (a == 100 and b >= 64 and b <= 127)
-
-
-func _exit_tree() -> void:
-	_close_router_port()
-	if _upnp_thread and _upnp_thread.is_started():
-		_upnp_thread.wait_to_finish()
-
-
-func join(ip: String, port := DEFAULT_PORT) -> Error:
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip, port)
-	if err != OK:
-		return err
-	multiplayer.multiplayer_peer = peer
-	_reset_session()
-	return OK
-
-
 func leave() -> void:
 	_leave_session()
-	_close_router_port()
-	internet_text = ""
 	online = false
 	last_invite = ""
 	_pending.clear()

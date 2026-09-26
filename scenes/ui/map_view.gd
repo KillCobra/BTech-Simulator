@@ -25,6 +25,8 @@ var bounds := Rect2()       # the university grounds (outside is darker)
 var frame_color := Color(0.08, 0.08, 0.14, 0.92)
 var show_names := true      # staff/friend names next to their markers
 var outside := OUTSIDE      # colour beyond the playable area
+var route: Array = []       # phone Navigate: [from: Vector2, to: Vector2, on this floor: bool] segments
+const ROUTE := Color("b07cff")
 
 var _sorted: Array = []
 var _placed: Array[Rect2] = []
@@ -77,6 +79,15 @@ func _draw() -> void:
 			var ring := poly.duplicate()
 			ring.append(poly[0])
 			draw_polyline(ring, Color("ff5a4a"), 2.5)
+	# Navigate route: solid on this floor, dashed where it's on another floor (stairs).
+	for seg: Array in route:
+		var a := to_screen(seg[0])
+		var b := to_screen(seg[1])
+		if seg[2]:
+			draw_line(a, b, Color(1, 1, 1, 0.9), 6.0, true)
+			draw_line(a, b, ROUTE, 3.5, true)
+		else:
+			draw_dashed_line(a, b, Color(ROUTE, 0.7), 2.5, 6.0)
 	# Name tags, most important first, never on top of each other.
 	var tags := []
 	for s in _sorted:
