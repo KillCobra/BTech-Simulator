@@ -1,0 +1,78 @@
+name: Release
+
+# Push a tag like v0.4.0 that points at a commit on the bunk-master branch:
+# the checks run, then Windows and Mac builds are exported and attached to a
+# GitHub release anyone with access to the repo can download.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: 4.4.1
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  release:
+    needs: checks
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Only release tags that are on bunk-master
+        run: |
+          git fetch origin bunk-master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/bunk-master; then
+            echo "::error::Tag $GITHUB_REF_NAME is not on the bunk-master branch"
+            exit 1
+          fi
+
+      - name: Download Godot ${{ env.GODOT_VERSION }} and export templates
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_win64.exe.zip"
+          7z x godot.zip -o"$RUNNER_TEMP/godot" > /dev/null
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_win64_console.exe" >> "$GITHUB_ENV"
+          curl -sSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          # export_presets.cfg points at export/templates/ for these two.
+          mkdir -p export/templates
+          7z e templates.tpz templates/windows_release_x86_64.exe templates/macos.zip -oexport/templates -y > /dev/null
+          ls -la export/templates
+
+      - name: Import project
+        run: timeout 300 "$GODOT" --headless --path . --import 2>&1 | tail -5 || true
+
+      - name: Export Windows build
+        run: |
+          "$GODOT" --headless --path . --export-release "Windows Desktop" export/BunkMaster.exe 2>&1 | tail -20
+          test -f export/BunkMaster.exe
+          test -f export/libwebrtc_native.windows.template_release.x86_64.dll
+          (cd export && 7z a ../BunkMaster.zip BunkMaster.exe libwebrtc_native.windows.template_release.x86_64.dll > /dev/null)
+
+      - name: Export Mac build
+        run: |
+          "$GODOT" --headless --path . --export-release "macOS" export/BunkMaster-mac.zip 2>&1 | tail -20
+          test -f export/BunkMaster-mac.zip
+          cp export/BunkMaster-mac.zip BunkMaster-mac.zip
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            BunkMaster.zip
+            BunkMaster-mac.zip
+          generate_release_notes: true
+          body: |
+            **Windows:** download `BunkMaster.zip`, right-click it → Extract All, and run `BunkMaster.exe` from the
+            extracted folder (keep the `.dll` next to it; don't run it from inside the zip).
+
+            **Mac:** download `BunkMaster-mac.zip`, unzip, move the app to Applications, then run once in Terminal:
+            `xattr -cr "/Applications/Bunk Master.app"`.

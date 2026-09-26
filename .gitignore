@@ -1,0 +1,5 @@
+.godot/
+/export/
+*.tmp
+*.translation
+export_credentials.cfg

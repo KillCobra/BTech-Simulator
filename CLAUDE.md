@@ -1,0 +1,18 @@
+# Bunk Master (Godot 4.4.1, GDScript)
+
+## Branch, CI and releases
+- Work happens on the `bunk-master` branch of github.com/KillCobra/BTech-Simulator (remote `origin`). It's a clean
+  history, separate from `main`; never merge `main` into it.
+- Every push to `bunk-master` runs `.github/workflows/checks.yml`: project import, all scripts compile, and a
+  bot-played 5-minute round on map 0 reaching the final bell with no `SCRIPT ERROR`.
+- Release = push a tag `vMAJOR.MINOR.PATCH` on a `bunk-master` commit (`git tag v0.5.0 && git push origin v0.5.0`).
+  `.github/workflows/release.yml` runs the checks, exports Windows (`BunkMaster.zip`: exe + webrtc dll) and Mac
+  (`BunkMaster-mac.zip`), and publishes a GitHub release. Tags not on `bunk-master` are refused.
+- Before pushing, run the same checks locally (see below). Bump the tag from the latest `git tag --sort=-v:refname`.
+
+## Local tools
+- Godot editor (console): any `Godot_v4.4.1-stable_win64_console.exe` under
+  `%TEMP%\claude\C--Users-gaura-desktop-cgame\*\scratchpad\godot441\`; export templates are in `export/templates/`.
+- Compile check: `godot --headless --path . --quit-after 60` and grep for `SCRIPT ERROR|Parse Error`.
+- Bot/dev flags are listed in README.md ("Develop"). Floating-prop audit: `godot --headless --path . -s scripts/prop_audit.gd`.
+- `export/` is git-ignored (local builds only).
