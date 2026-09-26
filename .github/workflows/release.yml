@@ -46,6 +46,9 @@ jobs:
           mkdir -p export/templates
           7z e templates.tpz templates/windows_release_x86_64.exe templates/macos.zip -oexport/templates -y > /dev/null
           ls -la export/templates
+          # Godot 4.4 sets the exe's icon with rcedit, found on PATH.
+          curl -sSL -o "$RUNNER_TEMP/godot/rcedit.exe" https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
 
       - name: Import project
         run: timeout 300 "$GODOT" --headless --path . --import 2>&1 | tail -5 || true
@@ -63,6 +66,30 @@ jobs:
           test -f export/BunkMaster-mac.zip
           cp export/BunkMaster-mac.zip BunkMaster-mac.zip
 
+      # Changelog = the commits since the previous version tag on this line of history
+      # (work lands as direct pushes, so GitHub's PR-based notes would be empty).
+      - name: Write the release notes
+        run: |
+          prev=$(git tag --list 'v*' --merged "$GITHUB_SHA" --sort=-v:refname | grep -vx "$GITHUB_REF_NAME" | head -1 || true)
+          {
+            echo "## What's changed"
+            echo
+            if [ -n "$prev" ]; then
+              git log --no-merges --reverse --format='- %s (%h)' "$prev..$GITHUB_SHA"
+            else
+              git log --no-merges --reverse --format='- %s (%h)' "$GITHUB_SHA"
+            fi
+            echo
+            echo "## Install"
+            echo
+            echo '**Windows:** download `BunkMaster.zip`, right-click it → Extract All, and run `BunkMaster.exe` from the'
+            echo "extracted folder (keep the \`.dll\` next to it; don't run it from inside the zip)."
+            echo
+            echo '**Mac:** download `BunkMaster-mac.zip`, unzip, move the app to Applications, then run once in Terminal:'
+            echo '`xattr -cr "/Applications/Bunk Master.app"`.'
+          } > release-notes.md
+          cat release-notes.md
+
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
@@ -70,9 +97,4 @@ jobs:
             BunkMaster.zip
             BunkMaster-mac.zip
           generate_release_notes: true
-          body: |
-            **Windows:** download `BunkMaster.zip`, right-click it → Extract All, and run `BunkMaster.exe` from the
-            extracted folder (keep the `.dll` next to it; don't run it from inside the zip).
-
-            **Mac:** download `BunkMaster-mac.zip`, unzip, move the app to Applications, then run once in Terminal:
-            `xattr -cr "/Applications/Bunk Master.app"`.
+          body_path: release-notes.md

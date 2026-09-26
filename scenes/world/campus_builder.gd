@@ -726,9 +726,7 @@ func _other_room(cx: float, kind: String, sign_text: String) -> void:
 					_block(p + Vector3(0, 0.72, 0.2), Vector3(0.5, 0.5, 0.06), Color("e0524f"), 0.02)
 					_block(p + Vector3(0, 0.22, 0), Vector3(0.4, 0.44, 0.4), P.METAL_DARK, 0.0)
 		"music":
-			_block(Vector3(cx - 2.5, 0.4, 6.5), Vector3(1.8, 0.8, 0.7), Color("26262e"), 0.0, true)
-			for k in 8:
-				_block(Vector3(cx - 3.3 + k * 0.2, 0.82, 6.2), Vector3(0.16, 0.03, 0.3), Color.WHITE, 0.0)
+			_piano(Vector3(cx - 2.5, 0, 6.6), Vector3.BACK)
 			_block(Vector3(cx + 2.0, 0.3, 6.0), Vector3(0.6, 0.6, 0.6), Color("e0524f"), 0.0, true)
 			_block(Vector3(cx + 2.9, 0.25, 6.3), Vector3(0.45, 0.5, 0.45), Color("ffd24a"), 0.0, true)
 			_block(Vector3(cx + 2.4, 1.1, 6.6), Vector3(0.5, 0.04, 0.5), Color("ffd24a"), 0.0)
@@ -970,6 +968,35 @@ func place_name(pos: Vector3) -> String:
 	if out == out.to_upper():
 		out = out.capitalize()
 	return ("Near " + out) if near and out != "" else out
+
+
+## Upright piano with two octaves of keys and a bench. `at`: floor under the middle
+## of the cabinet; `fwd`: the way the player faces when playing (keys to cabinet).
+## The keyboard runs to the player's right from there, so low notes are on the left.
+func _piano(at: Vector3, fwd: Vector3) -> void:
+	var right := fwd.cross(Vector3.UP)
+	var pt := func(l: float, y: float, d: float) -> Vector3:
+		return at + right * l + Vector3(0, y, 0) + fwd * d
+	var sz := func(sl: float, sy: float, sd: float) -> Vector3:
+		return Vector3(absf(right.x) * sl + absf(fwd.x) * sd, sy, absf(right.z) * sl + absf(fwd.z) * sd)
+	var wood := Color("2b1d17")
+	_block(pt.call(0, 0.65, 0), sz.call(1.6, 1.3, 0.45), wood, 0.0, true)  # cabinet
+	_block(pt.call(0, 1.32, 0), sz.call(1.66, 0.04, 0.5), wood.lightened(0.12), 0.0)  # lid
+	_block(pt.call(0, 0.72, -0.4), sz.call(1.6, 0.1, 0.35), wood, 0.0, true)  # keybed
+	for s: float in [-1.0, 1.0]:
+		_block(pt.call(s * 0.72, 0.335, -0.52), sz.call(0.08, 0.67, 0.08), wood, 0.0)  # front legs
+	# 14 white keys (two octaves, C to B) and the 10 black keys between them.
+	var whites := 14
+	var key_w := 0.1
+	var left := -key_w * whites / 2.0
+	for q in whites:
+		_block(pt.call(left + (q + 0.5) * key_w, 0.785, -0.41), sz.call(key_w - 0.008, 0.03, 0.3), Color("f4f1e8"), 0.0)
+		if q % 7 in [0, 1, 3, 4, 5]:  # a black key after C, D, F, G, A
+			_block(pt.call(left + (q + 1) * key_w, 0.81, -0.33), sz.call(0.055, 0.03, 0.17), Color("15151a"), 0.0)
+	_block(pt.call(0, 1.05, -0.24), sz.call(0.7, 0.26, 0.03), Color("f2e8c9"), 0.0)  # sheet music
+	_block(pt.call(0, 0.47, -0.9), sz.call(0.9, 0.06, 0.35), wood, 0.0)  # bench seat
+	for s: float in [-1.0, 1.0]:
+		_block(pt.call(s * 0.38, 0.22, -0.9), sz.call(0.08, 0.44, 0.3), wood, 0.0)
 
 
 func _interactable(kind: String, pos: Vector3, label: String, extra := {}) -> void:

@@ -735,9 +735,7 @@ func _computer_lab(F: Dictionary) -> void:
 func _music_room(F: Dictionary) -> void:
 	var D: float = F.d
 	_floor(F)
-	fb(F, -2.5, 0.4, D - 1.5, 1.8, 0.8, 0.7, Color("26262e"), 0.0, true)
-	for q in 8:
-		fb(F, -3.3 + q * 0.2, 0.82, D - 1.8, 0.16, 0.03, 0.3, Color.WHITE, 0.0)
+	c._piano(fp(F, -2.5, 0, D - 1.35), F.f)
 	fb(F, 2.0, 0.3, D - 2.0, 0.6, 0.6, 0.6, Color("e0524f"), 0.0, true)
 	fb(F, 2.9, 0.25, D - 1.7, 0.45, 0.5, 0.45, Color("ffd24a"), 0.0, true)
 	fb(F, 2.45, 1.1, D - 1.7, 0.5, 0.04, 0.5, Color("ffd24a"), 0.0)
