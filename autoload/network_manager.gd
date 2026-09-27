@@ -43,7 +43,6 @@ const DAILY := -2
 const Rules := preload("res://scripts/rules.gd")
 var game_mode := "class"  # host's pick: "class" (escape together) or "race" (first out wins)
 var staff_hear := true    # host's pick: staff hear players' microphones (accessibility: turn it off)
-var player_voice := false  # host's pick: players hear each other (proximity voice). Off: mics only reach the staff
 ## This round's rules, the same on every peer: {"mode", "event", "daily", "rule", "date"}.
 ## "fresh": someone in the lobby is playing their very first round (the basics only).
 var round_rules := {"mode": "class", "event": "", "daily": false, "rule": "", "fresh": false}
@@ -678,7 +677,7 @@ func _set_ready(value: bool) -> void:
 
 func start_game() -> void:
 	if multiplayer.is_server() and not in_game and all_ready():
-		var rules := {"mode": game_mode, "event": "", "daily": false, "rule": "", "date": 0, "fresh": false, "hear": staff_hear, "voice": player_voice}
+		var rules := {"mode": game_mode, "event": "", "daily": false, "rule": "", "date": 0, "fresh": false, "hear": staff_hear}
 		var rng := RandomNumberGenerator.new()
 		rng.randomize()
 		if map_choice == DAILY:
@@ -702,8 +701,6 @@ func start_game() -> void:
 				rules.rule = arg.trim_prefix("--rule=")
 			elif arg == "--no-hear":
 				rules.hear = false
-			elif arg == "--voice":
-				rules.voice = true
 			elif arg == "--fresh":
 				rules.fresh = true
 				rules.event = ""
@@ -746,24 +743,6 @@ func _lobby_hear(on: bool) -> void:
 	staff_hear = on
 	lobby_map_changed.emit()
 
-
-## Host: do players hear each other (proximity voice)? Everyone's lobby shows it.
-func set_player_voice(on: bool) -> void:
-	player_voice = on
-	lobby_map_changed.emit()
-	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
-		_lobby_voice.rpc(on)
-
-
-@rpc("authority", "reliable")
-func _lobby_voice(on: bool) -> void:
-	player_voice = on
-	lobby_map_changed.emit()
-
-
-## Right now, do players hear each other? (The round's rule in game, the lobby's pick outside.)
-func players_hear_each_other() -> bool:
-	return bool(round_rules.get("voice", false)) if in_game else player_voice
 
 
 ## Host: end the round screen and bring everyone back to the lobby.
@@ -836,7 +815,6 @@ func _register(info: Dictionary) -> void:
 		_lobby_map.rpc_id(id, map_choice)
 		_lobby_mode.rpc_id(id, game_mode)
 		_lobby_hear.rpc_id(id, staff_hear)
-		_lobby_voice.rpc_id(id, player_voice)
 	players_changed.emit()
 
 
@@ -882,7 +860,7 @@ func _start(minutes: float, map_id := 0, rules := {}) -> void:
 	current_map = clampi(map_id, 0, MAP_COUNT - 1)
 	round_rules = {"mode": str(rules.get("mode", "class")), "event": str(rules.get("event", "")),
 		"daily": bool(rules.get("daily", false)), "rule": str(rules.get("rule", "")), "date": int(rules.get("date", 0)),
-		"fresh": bool(rules.get("fresh", false)), "hear": bool(rules.get("hear", true)), "voice": bool(rules.get("voice", false))}
+		"fresh": bool(rules.get("fresh", false)), "hear": bool(rules.get("hear", true))}
 	in_game = true
 	if multiplayer.is_server():
 		_loaded.clear()

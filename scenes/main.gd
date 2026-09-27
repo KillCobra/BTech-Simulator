@@ -110,7 +110,7 @@ func _on_lobby_map_changed() -> void:
 		_map_about.text = _map_blurb()
 	if is_instance_valid(_map_name):
 		var shown := "Random" if Network.map_choice == Maps.RANDOM else ("Daily challenge" if Network.map_choice == Network.DAILY else Maps.title(Network.map_choice))
-		_map_name.text = "MAP:  %s   ·   %s   ·   voice chat: %s  ·  staff hear mics: %s" % [shown, "RACE: first out wins" if Network.game_mode == "race" else "CLASS: escape together", "ON" if Network.player_voice else "OFF", "ON" if Network.staff_hear else "OFF"]
+		_map_name.text = "MAP:  %s   ·   %s   ·   staff hear mics: %s" % [shown, "RACE: first out wins" if Network.game_mode == "race" else "CLASS: escape together", "ON" if Network.staff_hear else "OFF"]
 	_show_map_preview()
 
 
@@ -515,20 +515,11 @@ func _show_lobby() -> void:
 		hear.select(0 if Network.staff_hear else 1)
 		hear.item_selected.connect(func(i: int): Network.set_staff_hear(i == 0))
 		hear.tooltip_text = "ON: teachers hear how loud you talk (whisper!). OFF: the mic does nothing in game."
-		var talk := OptionButton.new()
-		talk.add_item("Players hear each other: OFF")
-		talk.add_item("Players hear each other: ON")
-		talk.select(1 if Network.player_voice else 0)
-		talk.item_selected.connect(func(i: int): Network.set_player_voice(i == 1))
-		talk.tooltip_text = "ON: proximity voice chat between players. OFF: use Discord etc.; phone calls still connect."
 		var mode_row := HBoxContainer.new()
 		mode_row.add_theme_constant_override("separation", 12)
 		var mode_field := _field("MODE", mode)
 		mode_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mode_row.add_child(mode_field)
-		var talk_field := _field("VOICE CHAT", talk)
-		talk_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		mode_row.add_child(talk_field)
 		var hear_field := _field("TEACHERS", hear)
 		hear_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mode_row.add_child(hear_field)

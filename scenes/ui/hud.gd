@@ -1435,7 +1435,7 @@ func _refresh_mic(st: Dictionary) -> void:
 		var warn := ""
 		if hear:
 			warn = "   staff hear you ~%d m" % int(round(r)) if r >= 4.0 else "   whisper: safe"
-		_mic.text = "● TALKING  %s%s%s" % ["|".repeat(bars), warn, "" if bool(Network.round_rules.get("voice", false)) else "   (friends' voice chat off)"]
+		_mic.text = "● TALKING  %s%s" % ["|".repeat(bars), warn]
 		_mic.add_theme_color_override("font_color", Color("ff6a5a") if hear and r >= 4.0 else Color("7fe0a0"))
 	elif mode == Settings.VoiceMode.PUSH_TO_TALK:
 		_mic.text = "[%s] push to talk   [%s] quick shout" % [GameInput.key_label("push_to_talk"), shout_key]

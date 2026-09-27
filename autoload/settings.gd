@@ -11,7 +11,7 @@ const SECTION := "settings"
 const KEYS := [
 	"mouse_sensitivity", "fov", "master_volume", "music_volume", "sfx_volume",
 	"quality", "fullscreen", "player_name", "smooth_edges", "show_vision", "ui_size",
-	"voice_mode", "mic_gate", "voice_volume", "mic_device",
+	"voice_mode", "mic_gate", "voice_volume", "mic_device", "proximity_voice",
 ]
 
 enum Quality { LOW, MEDIUM, HIGH }
@@ -34,6 +34,7 @@ var voice_mode := 0 ## 0 open mic (talks when it hears you), 1 push-to-talk, 2 m
 var mic_gate := 0.012 ## Open mic: how loud you must be to transmit (RMS, 0.002 - 0.08). Lower = more sensitive.
 var voice_volume := 1.0 ## Friends' voices, linear 0 - 1.
 var mic_device := "Default"
+var proximity_voice := false ## On: friends' voices fade with distance (to nothing far away) and are muffled through walls. Off: everyone at full volume.
 
 
 func _ready() -> void:
@@ -147,6 +148,8 @@ func _assign(key: String, value: Variant) -> void:
 			voice_volume = clampf(float(value), 0.0, 1.0)
 		"mic_device":
 			mic_device = str(value) if str(value) != "" else "Default"
+		"proximity_voice":
+			proximity_voice = bool(value)
 		"player_name":
 			var s := str(value).strip_edges()
 			player_name = s if not s.is_empty() else "Student"

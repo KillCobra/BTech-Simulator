@@ -40,10 +40,11 @@ Your first round only shows the basics (move, crouch, jump, E, shove); the rest 
 useful, and the key line at the bottom grows with the rounds you've played.
 
 ## Voice chat (proximity)
-Two lobby switches (host): **Players hear each other** (OFF by default, for groups already on Discord) and
-**Staff hear mics** (ON). With player voice on, friends hear you from where you stand: clear next to you, quieter
-down the corridor, muffled through a wall, a rumble through a floor; in the lobby everyone hears everyone. A phone
-call from an escaped friend always connects (a call screen on both phones, hang up any time). **Staff hear how loud you are** (never what you
+Each player picks how they hear friends (Settings > VOICE): **everyone at full volume, anywhere** (the default,
+like a party chat) or **proximity**: clear next to you, fading to nothing down the corridor, muffled through a
+wall, a rumble through a floor. In the lobby everyone hears everyone. A phone call from an escaped friend always
+comes through clearly (a call screen on both phones, hang up any time). The host can turn **Staff hear mics** OFF
+in the lobby. **Staff hear how loud you are** (never what you
 say): a whisper carries a metre or two, talking about 8 m, a yell down the corridor (half as far through walls,
 never through floors). Talk in class and the teacher turns round from the board ("Who's talking?!"); talk
 where you shouldn't be and staff come to look; talk in a locker and they know exactly where you are. The HUD
@@ -246,7 +247,7 @@ Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)
 `--bigmap` · `--quit-at-end` · `--phone=-1..1` (home / Navigate / Help Out) · `--helpbot` · `--hudsize=1..3` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
 `--rounds=N` (pretend to have played N rounds) · `--fresh` (a first-round ruleset) · `--question=S` (the nearest staff grabs and questions
 the host after S s) · `--voice-test=AMP` (a synthetic voice instead of the mic, so staff hearing works headless) · `--voice-echo` ·
-`--no-hear` · `--voice` (players hear each other) · `--cctv` (escaped: look through a camera) ·
+`--no-hear` · `--cctv` (escaped: look through a camera) ·
 bot actions `!ask:0..2` `!examphoto` `!excuse0..3` `!goto:KIND` (stand by the nearest bucket / extinguisher / trolley / any interactable)
 
 Every round prints `[moments]` at the final bell: how often something happened to each player and the longest

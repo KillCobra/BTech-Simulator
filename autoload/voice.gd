@@ -15,7 +15,6 @@ signal heard(peer_id: int, rms: float)  # host only: someone's mic frame (for st
 const RATE := 16000
 const FRAME := 320            # samples per packet (20 ms)
 const HANG := 0.35            # open mic: keep sending this long after you stop talking
-const RELAY_RANGE := 48.0     # host: don't relay voices to players further away than this
 const HEADER := 6             # see scripts/adpcm.gd
 
 const Adpcm := preload("res://scripts/adpcm.gd")
@@ -39,6 +38,7 @@ var _peers := {}           # peer id -> {"player", "playback", "last", "seq", "r
 var _test_amp := 0.0       # dev: --voice-test=AMP talks a synthetic voice instead of the mic
 var _test_t := 0.0
 var _echo := false         # dev: --voice-echo plays your own voice back to you
+var _force_proximity := false
 var _world: Node
 
 
@@ -52,6 +52,8 @@ func _ready() -> void:
 			_test_amp = float(arg.trim_prefix("--voice-test="))
 		elif arg == "--voice-echo":
 			_echo = true
+		elif arg == "--proximity":  # dev: proximity voice for this run (never saved to settings)
+			_force_proximity = true
 	if DisplayServer.get_name() != "headless":
 		_start_mic()
 
@@ -223,18 +225,10 @@ func _down(from: int, packet: PackedByteArray) -> void:
 		_received(from, packet)
 
 
-## Host: is `listener` close enough to `speaker` to be worth sending the frame to?
-func _audible(speaker: int, listener: int) -> bool:
-	if linked(speaker, listener):
-		return true  # a phone call always goes through
-	if not Network.players_hear_each_other():
-		return false  # voice chat between players is off: the mic only reaches the staff
-	if _world == null or not Network.in_game:
-		return true  # the lobby: everyone hears everyone
-	var players: Node = _world.get_node_or_null("Players")
-	var a: Node3D = players.get_node_or_null(str(speaker)) if players else null
-	var b: Node3D = players.get_node_or_null(str(listener)) if players else null
-	return a == null or b == null or a.global_position.distance_to(b.global_position) < RELAY_RANGE
+## Host: does `listener` get this frame? Always: each player decides for themselves
+## whether voices fade with distance (Settings > VOICE), so the host can't skip anyone.
+func _audible(_speaker: int, _listener: int) -> bool:
+	return true
 
 
 func _received(from: int, packet: PackedByteArray) -> void:
@@ -243,8 +237,6 @@ func _received(from: int, packet: PackedByteArray) -> void:
 		heard.emit(from, rms)
 	if from == multiplayer.get_unique_id() and not _echo:
 		return
-	if not Network.players_hear_each_other() and not linked(from, multiplayer.get_unique_id()) and not _echo:
-		return  # voice chat between players is off (the host still passed it to the staff above)
 	var out := _out(from)
 	var seq := packet[0] | (packet[1] << 8)
 	out.last = Time.get_ticks_msec() / 1000.0
@@ -300,8 +292,8 @@ func _update_voices(delta: float) -> void:
 			continue
 		var who: Node3D = players.get_node_or_null(str(id)) if players else null
 		var phone := linked(int(id), me)
-		if who == null or cam == null or phone:
-			# Lobby, or a phone call: straight in your ear.
+		if who == null or cam == null or phone or not (bool(Settings.proximity_voice) or _force_proximity):
+			# Lobby, a phone call, or proximity switched off: everyone at full volume, anywhere.
 			p.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
 			p.panning_strength = 0.0
 			p.global_position = cam.global_position if cam else Vector3.ZERO
