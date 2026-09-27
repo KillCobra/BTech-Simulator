@@ -1,0 +1,77 @@
+name: Checks
+
+# Basic health checks for every push to the game branch (and PRs into it):
+# the project imports, every script compiles, and a short bot-played round
+# runs from the first bell to the final bell without script errors.
+on:
+  push:
+    branches: [bunk-master]
+  pull_request:
+    branches: [bunk-master]
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.4.1
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot ${{ env.GODOT_VERSION }}
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_win64.exe.zip"
+          7z x godot.zip -o"$RUNNER_TEMP/godot" > /dev/null
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_win64_console.exe" >> "$GITHUB_ENV"
+
+      - name: Import project
+        run: timeout 300 "$GODOT" --headless --path . --import 2>&1 | tee import.log || true
+
+      - name: Every script compiles
+        run: |
+          timeout 180 "$GODOT" --headless --path . --quit-after 120 2>&1 | tee load.log || true
+          if grep -E "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" load.log; then
+            echo "::error::Script errors while loading the game"
+            exit 1
+          fi
+
+      - name: Voice codec
+        run: |
+          timeout 120 "$GODOT" --headless --path . -s scripts/voice_codec_test.gd 2>&1 | tee codec.log || true
+          grep -q "\[voice\] OK" codec.log || { echo "::error::Voice codec test failed"; exit 1; }
+
+      - name: Smoke test a whole round (bot player, 5 minutes at 5x speed)
+        run: |
+          timeout 150 "$GODOT" --headless --path . -- --host --autostart=1 --minutes=5 --speed=5 --name=CI --map=0 --rounds=5 --quit-at-end \
+            --voice-test=0.03 "--walk=!wait3;!stand;!coin;!wait2;!sit;!ask:0;!wait4;!ping;!wait300" 2>&1 | tee round.log || true
+          grep -q "Class has started" round.log || { echo "::error::The round never started"; exit 1; }
+          grep -q "The final bell rang" round.log || { echo "::error::The round never reached the final bell"; exit 1; }
+          grep -q "staff heard CI" round.log || { echo "::error::Staff never heard the test voice"; exit 1; }
+          if grep -E "SCRIPT ERROR" round.log; then
+            echo "::error::Script errors during the round"
+            exit 1
+          fi
+
+      - name: Smoke test the chaos (excuses, bucket, extinguisher, trolley; Grand Campus, a first round)
+        run: |
+          timeout 150 "$GODOT" --headless --path . -- --host --autostart=1 --minutes=5 --speed=5 --name=CI --map=1 --rounds=0 --quit-at-end \
+            --question=25 "--walk=!wait3;!stand;!goto:bucket;!interact;!goto:extinguisher;!interact;!use1;!goto:trolley;!interact;!wait1;!interact;!wait25;!excuse0;!wait300" 2>&1 | tee chaos.log || true
+          grep -q "The final bell rang" chaos.log || { echo "::error::The chaos round never reached the final bell"; exit 1; }
+          grep -q "questions CI" chaos.log || { echo "::error::Nobody questioned the bot"; exit 1; }
+          grep -q "set off a fire extinguisher" chaos.log || { echo "::error::The extinguisher never went off"; exit 1; }
+          if grep -E "SCRIPT ERROR" chaos.log; then
+            echo "::error::Script errors during the chaos round"
+            exit 1
+          fi
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-logs
+          path: "*.log"

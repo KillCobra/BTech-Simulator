@@ -1,0 +1,54 @@
+; Engine configuration file.
+; Open this folder in Godot 4.3+ (Project Manager > Import).
+
+config_version=5
+
+[application]
+
+config/name="Bunk Master"
+config/description="Multiplayer college bunk simulator. Sneak out of class without getting caught."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+config/icon="res://art/icon.png"
+boot_splash/bg_color=Color(0.5608, 0.8275, 0.9412, 1)
+boot_splash/image="res://art/splash.png"
+boot_splash/fullsize=true
+
+[autoload]
+
+GameInput="*res://autoload/game_input.gd"
+Settings="*res://autoload/settings.gd"
+Sfx="*res://autoload/sfx.gd"
+Network="*res://autoload/network_manager.gd"
+Profile="*res://autoload/profile.gd"
+Voice="*res://autoload/voice.gd"
+
+[audio]
+
+driver/enable_input=true
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=880
+window/size/window_width_override=1440
+window/size/window_height_override=990
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[gui]
+
+theme/custom_font="res://fonts/pixel.tres"
+
+[rendering]
+
+environment/defaults/default_clear_color=Color(0.5608, 0.8275, 0.9412, 1)
+
+anti_aliasing/quality/msaa_3d=2
+anti_aliasing/quality/screen_space_aa=1
+anti_aliasing/quality/use_debanding=true
+lights_and_shadows/directional_shadow/size=8192
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
+environment/ssao/quality=3
+textures/vram_compression/import_etc2_astc=true
