@@ -2009,6 +2009,8 @@ func _chaos_step(players: Dictionary, _delta: float) -> void:
 					_tell(id, "WET FLOOR!", Color("7fd0ea"))
 		for b in _brains:
 			var npc: Node = b.npc
+			if npc.name == "Peon":
+				continue  # Mr. Mendes knows exactly where he mopped
 			var d := Vector2(npc.global_position.x - at.x, npc.global_position.z - at.z).length()
 			if d >= r or absf(npc.global_position.y - at.y) > 1.0 or float(npc.net_speed) < 3.2:
 				continue

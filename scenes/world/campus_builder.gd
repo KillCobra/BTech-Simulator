@@ -205,6 +205,7 @@ func build(root: Node3D, which := 0) -> void:
 	grounds.build(self)  # the map's own academic complex (if any) and grounds
 	_seat_interactables()
 	_chaos_props()
+	_directory(assembly + (Vector3(-7.0, 0, 1.5) if grounds.classic else Vector3(-4.0, 0, 0)))
 	_outer_ground(grounds.classic)
 	_clouds()
 	_commit()
@@ -253,6 +254,26 @@ func _chaos_props() -> void:
 		_vbox(at + Vector3(0.1, 0.85, 0.05), Vector3(0.05, 1.1, 0.05), Color("8a5a3a"))  # mop handle
 		_vbox(at + Vector3(0.1, 0.36, 0.05), Vector3(0.2, 0.14, 0.2), Color("e8e2d4"))  # mop head
 		interactables.append({"kind": "bucket", "pos": at, "label": "Kick over the mop bucket (wet floor!)"})
+	_oy = was
+
+
+## The academy's signpost: its stupidly prestigious departments, pointing every which way.
+const DEPARTMENTS := ["< DEPT. OF ADVANCED QUEUEING", "FACULTY OF THEORETICAL ATTENDANCE >", "< SAMOSA ECONOMICS (BASEMENT)",
+	"INSTITUTE OF APPLIED PROCRASTINATION >", "< BACHELOR OF UNNECESSARY SCIENCE"]
+
+
+func _directory(at: Vector3) -> void:
+	var was := _oy
+	_oy = 0.0
+	_block(at + Vector3(0, 1.45, 0), Vector3(0.14, 2.9, 0.14), Color("3a3d47"), 0.0, true)
+	_block(at + Vector3(0, 0.05, 0), Vector3(0.5, 0.1, 0.5), Color("3a3d47"), 0.0)
+	var colors := [Color("24315e"), Color("7a2a3a"), Color("2f6a4a"), Color("5a3a7a"), Color("8a5a1a")]
+	for k in DEPARTMENTS.size():
+		var y := 2.65 - k * 0.42
+		var shift := -1.12 if str(DEPARTMENTS[k]).begins_with("<") else 1.12  # boards hang off the post
+		_block(at + Vector3(shift, y, 0), Vector3(2.1, 0.34, 0.06), colors[k % colors.size()], 0.0)
+		_label(DEPARTMENTS[k], at + Vector3(shift, y, 0.04), 20, Color("ffd24a"), 0.0, 6)
+		_label(DEPARTMENTS[k], at + Vector3(shift, y, -0.04), 20, Color("ffd24a"), PI, 6)
 	_oy = was
 
 
