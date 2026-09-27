@@ -17,7 +17,7 @@ const BINDINGS := [
 	["use_1", "Item slot 1", [KEY_1]],
 	["use_2", "Item slot 2", [KEY_2]],
 	["use_3", "Item slot 3", [KEY_3]],
-	["phone", "Phone (timetable, money, trade, staff tracker)", [KEY_Q]],
+	["phone", "Phone", [KEY_Q]],
 	["throw", "Throw paper ball", [KEY_G]],
 	["ping", "Ping", [KEY_T]],
 	["proxy", "Answer for a friend", [KEY_R]],

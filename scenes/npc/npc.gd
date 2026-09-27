@@ -35,6 +35,8 @@ var _tag: Label3D
 var role := ""
 var room := -1
 var display_name := ""
+var view_range := 0.0  # how far / how wide they see (drawn as a vision cone for players)
+var view_fov := 0.0
 
 # Server-side movement orders.
 var move_speed := 2.0
@@ -65,6 +67,8 @@ func setup(data: Dictionary) -> void:
 	look_yaw = data.yaw
 	pose = data.get("pose", 0)
 	voice_pitch = data.get("voice", 1.0)
+	view_range = float(data.get("view", [0.0, 0.0])[0])
+	view_fov = float(data.get("view", [0.0, 0.0])[1])
 	collision_layer = 2
 	collision_mask = 1 | 8  # world + staff-only walls (keep out of the water)
 

@@ -269,6 +269,8 @@ func current_room(id: int) -> int:
 
 func _schedule_period(p: int) -> void:
 	world.period = p
+	for id in status:
+		status[id].helper_answers = -1
 	world.period_start = elapsed
 	world.passing_until = elapsed + (float(world.get("passing_time", PASSING_TIME)) if p > 0 else 0.0)
 	var settle: float = float(world.passing_until) - elapsed
@@ -326,6 +328,7 @@ func _students_change_rooms() -> void:
 
 
 func _add_npc(data: Dictionary, brain: Dictionary) -> Dictionary:
+	data.view = [float(brain.get("range", 0.0)), float(brain.get("fov", 0.0))]  # for the players' vision cones
 	var npc: Node = npc_spawner.spawn(data)
 	brain.npc = npc
 	brain.role = data.role
@@ -485,7 +488,8 @@ func _new_status(id: int) -> Dictionary:
 		"returning": false, "return_until": -1.0, "essay_line": 0, "exam_key": "", "exam_total": 0, "exams": 0,
 		"exams_missed": 0, "exam_photo": false, "cash": START_CASH, "earned": 0, "upgrades": {"pass": 0, "shoes": 0},
 		"exam_in_at": -1.0, "exam_paper": "", "exam_deadline": -1.0, "wait_since": -1.0, "badges": {},
-		"settle_until": -1.0, "had_pass": false, "pass_late": false, "was_in_room": true}
+		"settle_until": -1.0, "had_pass": false, "pass_late": false, "was_in_room": true,
+		"helper_answers": -1, "helper_from": "", "assists": 0, "helped": {}}
 
 
 func _log(text: String) -> void:
@@ -512,7 +516,7 @@ func request(action: String, args: Dictionary) -> void:
 		return
 	# Out of the university: you can still ping, trade, boost a friend and throw paper
 	# balls back over the wall to pull staff away from friends still inside.
-	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost"]:
+	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver"]:
 		return
 	match action:
 		"interact": _on_interact(id, p, int(args.get("i", -1)))
@@ -532,6 +536,9 @@ func request(action: String, args: Dictionary) -> void:
 		"ball_drop": _on_ball_throw(id, p, Vector3.ZERO, 0.0)
 		"buy": _on_buy(id, p, str(args.get("what", "")))
 		"ask": _on_ask(id, p, int(args.get("kind", 0)), str(args.get("q", "")))
+		"help_answers": _on_help_answers(id, int(args.get("to", -1)), int(args.get("score", 0)))
+		"prank_call": _on_prank_call(id, int(args.get("to", -1)))
+		"deliver": _on_deliver(id, int(args.get("to", -1)))
 		"give": _on_give(id, p, int(args.get("to", -1)), int(args.get("cash", 0)), int(args.get("slot", -1)))
 
 
@@ -675,7 +682,8 @@ func _on_buy(id: int, p: Node3D, what: String) -> void:
 ## Trade with a classmate standing next to you: hand over money or an item.
 func _on_give(id: int, p: Node3D, to: int, cash: int, slot: int) -> void:
 	var friend := players_root.get_node_or_null(str(to))
-	if friend == null or to == id or not status.has(to) or friend.global_position.distance_to(p.global_position) > 3.5:
+	var remote: bool = status[id].state == "escaped"  # sent by phone from outside
+	if friend == null or to == id or not status.has(to) or (not remote and friend.global_position.distance_to(p.global_position) > 3.5):
 		_tell(id, "Stand next to your classmate to trade.", Color("ffb37a"))
 		return
 	var st: Dictionary = status[id]
@@ -703,6 +711,99 @@ func _on_give(id: int, p: Node3D, to: int, cash: int, slot: int) -> void:
 		_tell(id, "Gave the %s to %s." % [ITEMS.get(item, item), _name(to)], Color("9fd8ff"))
 		_tell(to, "%s gave you a %s!" % [_name(id), ITEMS.get(item, item)], Color("ffd24a"))
 		_fx.rpc_id(to, "pickup", Vector3.ZERO, "")
+
+
+# --- Helping from outside (escaped players, from their phone) ------------------------------------
+
+const ASSIST_POINTS := 40
+const PRANK_COOLDOWN := 45.0
+const DELIVERY_PRICE := 15
+const PRANK_LINES := ["Hello? Principal's office? ...Who is this?", "WHAT? My car is being towed?!",
+	"Wrong number. Again. Who keeps calling?!", "Yes, this is staff. No, I did NOT order 40 pizzas."]
+
+
+## `to` is a friend still inside who can take help (not escaped, not in detention); else tells `id` why not.
+func _inside_friend(id: int, to: int) -> bool:
+	if status[id].state != "escaped":
+		return false
+	if to == id or not status.has(to) or not players_root.has_node(str(to)):
+		return false
+	if status[to].state in ["escaped", "detention"]:
+		_tell(id, "%s can't use help right now." % _name(to), Color("ffb37a"))
+		return false
+	return true
+
+
+## The helper sat the friend's paper on their phone: the friend's test this
+## period scores at least that. Once per friend per period.
+func _on_help_answers(id: int, to: int, score: int) -> void:
+	if not _inside_friend(id, to):
+		return
+	var key := "%d:%d" % [to, int(world.period)]
+	var helped: Dictionary = status[id].helped
+	if helped.has(key):
+		_tell(id, "You already texted %s this period's answers." % _name(to), Color("ffb37a"))
+		return
+	helped[key] = true
+	score = clampi(score, 0, 100)
+	var ft: Dictionary = status[to]
+	ft.helper_answers = maxi(int(ft.helper_answers), score)
+	ft.helper_from = _name(id)
+	status[id].assists = int(status[id].assists) + 1
+	_tell(id, "Answers sent to %s (%d/100). +%d" % [_name(to), score, ASSIST_POINTS], Color("7fe0a0"))
+	_tell(to, "%s texted you the answers: your %s test scores at least %d/100!" % [_name(id), SUBJECTS[current_room(to)], score], Color("ffd24a"))
+	_fx.rpc_id(to, "pickup", Vector3.ZERO, "")
+	_log("%s texted %s the answers." % [_name(id), _name(to)])
+
+
+## A prank call pulls away whoever is chasing the friend (or the staff nearest to them) for 10 s.
+func _on_prank_call(id: int, to: int) -> void:
+	if not _inside_friend(id, to):
+		return
+	var friend: Node3D = players_root.get_node(str(to))
+	var pick := {}
+	for b in _brains:
+		if b.state == "chase" and b.target == to:
+			pick = b
+	if pick.is_empty():
+		pick = _nearest_brain(friend.global_position, 30.0, ["teacher", "gate", "patrol", "sitter"])
+	if pick.is_empty():
+		_tell(id, "No staff near %s to prank-call." % _name(to), Color("ffb37a"))
+		return
+	if not _cooldown(id, "prank", PRANK_COOLDOWN):
+		_tell(id, "Your number's been flagged. Wait a bit before calling again.", Color("ffb37a"))
+		return
+	pick.distracted_until = elapsed + 10.0
+	pick.npc.stop(pick.npc.rotation.y)
+	pick.npc.say(PRANK_LINES[_rng.randi() % PRANK_LINES.size()], 3.5)
+	if pick.target != -1:
+		_end_chase(pick)
+	status[id].assists = int(status[id].assists) + 1
+	_tell(id, "Prank call! %s is busy for 10 s. +%d" % [pick.npc.display_name, ASSIST_POINTS], Color("7fe0a0"))
+	_tell(to, "%s prank-called %s. GO!" % [_name(id), pick.npc.display_name], Color("ffd24a"))
+	_log("%s prank-called %s." % [_name(id), pick.npc.display_name])
+
+
+## Samosa delivery to a friend inside, paid by the helper.
+func _on_deliver(id: int, to: int) -> void:
+	if not _inside_friend(id, to):
+		return
+	var st: Dictionary = status[id]
+	var ft: Dictionary = status[to]
+	if (ft.items as Array).size() >= MAX_ITEMS:
+		_tell(id, "%s's pockets are full." % _name(to), Color("ffb37a"))
+		return
+	if int(st.cash) < DELIVERY_PRICE:
+		_tell(id, "Delivery costs Rs %d. You're broke!" % DELIVERY_PRICE, Color("ffb37a"))
+		return
+	if not _cooldown(id, "deliver", 15.0):
+		return
+	st.cash = int(st.cash) - DELIVERY_PRICE
+	ft.items.append("samosa")
+	st.assists = int(st.assists) + 1
+	_tell(id, "Samosa delivered to %s. +%d" % [_name(to), ASSIST_POINTS], Color("7fe0a0"))
+	_tell(to, "Delivery! %s sent you a samosa." % _name(id), Color("ffd24a"))
+	_fx.rpc_id(to, "pickup", Vector3.ZERO, "")
 
 
 ## Coins lying around campus: walk over one to pocket it; another turns up
@@ -1060,6 +1161,10 @@ func _on_exam(id: int, p: Node3D, room: int, exam_id: int, score: int) -> void:
 	if st.exam_photo:
 		score = 100
 		st.exam_photo = false
+	if int(st.helper_answers) > score:
+		_tell(id, "%s's texted answers saved you!" % str(st.helper_from), Color("7fe0a0"))
+		score = int(st.helper_answers)
+	st.helper_answers = -1
 	score = clampi(score, 0, 100)
 	st.exam_total = int(st.exam_total) + score
 	st.exams = int(st.exams) + 1
@@ -1157,6 +1262,8 @@ func _on_shove(id: int, p: Node3D) -> void:
 		if b.role == "extra" or _stunned(b):
 			continue
 		var to: Vector3 = b.npc.global_position - p.global_position
+		if absf(to.y) > 1.0 or not _within_reach(p, b.npc):
+			continue  # another floor, or a wall / ceiling in between
 		to.y = 0.0
 		if to.length() < best and (to.length() < 0.8 or fwd.dot(to.normalized()) > 0.35):
 			best = to.length()
@@ -1182,6 +1289,15 @@ func _on_shove(id: int, p: Node3D) -> void:
 	elif target.role != "extra":
 		st.sus = minf(100.0, st.sus + 55.0)  # now they're definitely suspicious
 	_log("%s shoved %s!" % [_name(id), npc.display_name])
+
+
+## Nothing solid between a player's chest and someone else's (shoves, grabs).
+func _within_reach(p: Node3D, other: Node3D) -> bool:
+	var from := p.global_position + Vector3(0, 1.1, 0)
+	var to := other.global_position + Vector3(0, 1.1, 0)
+	var query := PhysicsRayQueryParameters3D.create(from, to, 1)
+	query.exclude = [p.get_rid(), other.get_rid()]
+	return players_root.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
 func _stunned(b: Dictionary) -> bool:
@@ -1545,6 +1661,10 @@ func _update_player(id: int, p: Node3D, delta: float) -> void:
 			elif campus.escaped(p.global_position):
 				st.state = "escaped"
 				st.time = elapsed
+				st.sus = 0.0
+				st.seen = false
+				st.grabbed = false
+				_tell(id, "You're OUT! Phone > HELP OUT: text friends answers, prank-call staff, send money.", Color("7fe0a0"))
 				_fx.rpc_id(id, "win", Vector3.ZERO, "")
 				_log("%s ESCAPED the university!" % _name(id))
 				for b in _brains:
@@ -1631,9 +1751,10 @@ func _end_round() -> void:
 				+ int(st.get("exam_total", 0)) - int(st.get("exams_missed", 0)) * 50
 		if st.state == "escaped":
 			score += 500 + int(maxf(0.0, round_time - float(st.time)))
+		score += int(st.get("assists", 0)) * ASSIST_POINTS
 		st.score = score
 		list.append({"name": _name(id), "score": score, "escaped": st.state == "escaped", "time": st.time,
-			"quests": done, "caught": st.caught, "spotted": st.spotted, "tests": int(st.get("exam_total", 0))})
+			"quests": done, "caught": st.caught, "spotted": st.spotted, "tests": int(st.get("exam_total", 0)), "assists": int(st.get("assists", 0))})
 	list.sort_custom(func(a, b): return a.score > b.score)
 	results = list
 	for b in _brains:
@@ -2116,7 +2237,7 @@ func _chase_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		_end_chase(b)
 		return
 	# Catching takes a moment: the student is grabbed and can shove free.
-	if dist < CATCH_DIST and (not p.hidden or b.saw_hide):
+	if dist < CATCH_DIST and (not p.hidden or b.saw_hide) and (p.hidden or _within_reach(p, npc)):
 		if float(b.get("grab_until", -1.0)) < 0.0:
 			b.grab_until = elapsed + GRAB_TIME
 			st.grabbed = true

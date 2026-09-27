@@ -114,6 +114,8 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - Stay near your seat while your teacher faces the class; move when they turn to the board.
 - Outside your own classroom you're suspicious to all staff and CCTV. Suspicion fills while seen; at 100% they chase.
   Staff and cameras only see (and hear) students on their own floor: never through ceilings or across floors.
+  Their **vision** shows as wedges on the minimap and big map (yellow calm, orange suspicious, red chasing); turn
+  it off in Settings.
   CCTV, the librarian and the canteen uncle don't chase: they call someone who will.
 - Sprinting is loud. Crouching hides you behind desks. Walking next to other students gives cover.
 - Hide in lockers or washroom stalls (E) to break a chase, unless they saw you get in.
@@ -128,15 +130,18 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - Items: Hall Pass (ask your teacher or buy one, 35 s of legal wandering), Samosa (bribe/distract staff or eat it),
   Medical Note (staff room cupboard), Canteen Key.
 - Fire alarm (verandah pillars): staff evacuate to the plaza for 25 s. 150 s cooldown.
-- Escaped? You can still use your phone (track staff, trade, ping) and throw paper balls back over the wall to
-  pull staff away from friends still inside.
+- Escaped? Your phone's **Help Out** app keeps you in the game: sit a friend's test on your phone and text them the
+  answers (their test counts at least your score), prank-call the staff chasing them (10 s distraction), send
+  money, or order them a samosa (Rs 15). Each help is +40 points. You can also throw paper balls back over the wall.
 - Score: escape +500 plus time left, side quests +150 each, caught -100, spotted -25. Round lengths: 5, 8, 12
   or 20 minutes (the big maps take a while).
 
 ## Develop
 Open `project.godot` in Godot 4.4+. Test multiplayer with Debug > Customize Run Instances.
 Art: everything is coloured boxes merged by `scripts/voxel.gd` (fake-bevel shader `shaders/voxel.gdshader`),
-colours in `scripts/palette.gd`. Audio is synthesized at startup by `autoload/sfx.gd` (no asset files).
+colours in `scripts/palette.gd`. Text uses the pixel font Jersey 10 (SIL OFL, `fonts/`; `fonts/make_font.py`
+makes the 1.33x-size copy the game uses). Curved paths, roundabouts and rounded kerbs: `curve_walk` / `curve_road`
+in `scenes/world/maps/grounds.gd`. Audio is synthesized at startup by `autoload/sfx.gd` (no asset files).
 Rules and NPC brains: `scenes/world/director.gd`. Framework + First Day's school: `scenes/world/campus_builder.gd`.
 Maps: `scenes/world/maps/` (list in `maps.gd`; outdoor toolkit `grounds.gd`; building toolkit `academic_kit.gd`
 builds wings of corridors, rooms and stairwells from room lists).
@@ -148,7 +153,7 @@ Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)
 `--session-host=NAME` / `--session-join=NAME` · `--name=X --room=0..3` ·
 `--at=x,z` · `--walk=x,z;!interact;!use1;!proxy;!wait2;!stand;!coin;!counter;!buy:samosa;!give10;!giveslot0;!bump;...`
 (test bot) · `--autoready` · `--no-staff` · `--trace` · `--cam=x,y,z,tx,ty,tz` · `--shot=file.png --shot_delay=S` ·
-`--bigmap` · `--quit-at-end` · `--phone=-1..5` (home / an app) · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
+`--bigmap` · `--quit-at-end` · `--phone=-1..6` (home / an app) · `--helpbot` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
 bot actions `!ask:0..2` `!examphoto`
 
 ## Not included

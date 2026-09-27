@@ -7,7 +7,7 @@ extends Control
 ## building, hall, room, stairs, wall. Drawn in that order, with building
 ## shadows, room walls, road markings and non-overlapping name tags.
 
-const KIND_ORDER := ["area", "water", "path", "road", "court", "building", "hall", "room", "stairs", "wall"]
+const KIND_ORDER := ["area", "water", "path", "road", "patch", "court", "building", "hall", "room", "stairs", "wall"]
 const OUTSIDE := Color("4a7f41")
 const GRASS := Color("7cbf5a")
 const INK := Color("2a2230")
@@ -148,6 +148,8 @@ func _draw_shape(s: Dictionary, r: Rect2) -> void:
 					a = Vector2(r.get_center().x, r.position.y)
 					b = Vector2(r.get_center().x, r.end.y)
 				draw_dashed_line(to_screen(a), to_screen(b), Color("f4f1e6", 0.8), maxf(1.0, zoom * 0.18), maxf(4.0, zoom * 2.4))
+		"patch":  # a piece of a curved path or road: filled, no outline (they tile)
+			draw_colored_polygon(pts, c)
 		"path":
 			draw_colored_polygon(pts, c.lightened(0.1))
 			draw_polyline(_closed(pts), c.darkened(0.25), 1.0)
@@ -252,6 +254,15 @@ func _marker(font: Font, m: Dictionary) -> void:
 			if show_names and str(m.get("text", "")) != "":
 				_tag(font, at + Vector2(0, -16), str(m.text), label_size, Color.WHITE, Color(0.1, 0.3, 0.45, 0.8))
 		"staff":
+			# Where they're looking: a faint wedge (vision cones setting), not on other floors.
+			if float(m.get("fov", 0.0)) > 0.0 and not bool(m.get("other_floor", false)):
+				var wedge := PackedVector2Array([at])
+				var fov := deg_to_rad(float(m.fov))
+				for k in 9:
+					var a: float = float(m.yaw) - fov / 2.0 + fov * k / 8.0
+					wedge.append(to_screen(m.at + Vector2(-sin(a), -cos(a)) * float(m.reach)))
+				var tint: Color = [Color(1.0, 0.86, 0.3), Color(1.0, 0.55, 0.2), Color(1.0, 0.22, 0.2)][clampi(int(m.get("alert", 0)), 0, 2)]
+				draw_colored_polygon(wedge, Color(tint, 0.22))
 			draw_icon_staff(self, at, int(m.get("alert", 0)), bool(m.get("other_floor", false)), t)
 			if show_names and str(m.get("text", "")) != "":
 				_tag(font, at + Vector2(0, -17), str(m.text), label_size - 1, Color.WHITE, Color(0.45, 0.08, 0.08, 0.8))

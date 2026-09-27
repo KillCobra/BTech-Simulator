@@ -25,6 +25,7 @@ func plan(campus: RefCounted) -> void:
 	c = campus
 	rng.seed = 7000 + int(campus.map_id)
 	_plan()
+	_round_corners()
 
 
 func build(campus: RefCounted) -> void:
@@ -151,6 +152,7 @@ func lay_paving() -> void:
 			var a := start + (k + 0.5) * length / n
 			var p := Vector3(a, 0.065, mid.y) if along_x else Vector3(mid.x, 0.065, a)
 			c._vbox(p, Vector3(2.4, 0.02, 0.16) if along_x else Vector3(0.16, 0.02, 2.4), P.LINE)
+	_lay_curves()
 
 
 ## Adds walkable nav points every `step` metres along a line (for staff pathing).
@@ -160,6 +162,181 @@ func nav_line(a: Vector2, b: Vector2, step := 10.0) -> void:
 		var p := a.lerp(b, float(k) / n)
 		c.nav_points.append(Vector3(p.x, 0, p.y))
 
+
+# --- Curved ways ------------------------------------------------------------------------------------
+# Real campuses aren't all straight lines: winding footpaths, roundabouts, rounded
+# kerbs. These are laid in 1 m voxel tiles (the world is made of axis-aligned
+# blocks), so a curve reads as a smooth, stepped path, and on the maps as one too.
+
+const CORNER_RADIUS := 5.0  # rounded kerb where two roads meet
+
+var _curves: Array = []  # {"cells": {Vector2i: true}, "color", "alt", "top"}
+
+
+## A smooth footpath through `points` (Vector2s, Catmull-Rom). Call from _plan().
+func curve_walk(points: Array, width := 3.0, color := P.STONE, alt := P.STONE_DARK) -> void:
+	var line := _spline(points)
+	_add_curve(_rasterize(line, width), color, alt, 0.036, color.lightened(0.1))
+	_nav_along(line)
+
+
+## A round lawn (a roundabout's island, a flower bed), raised a touch above the road.
+func round_lawn(center: Vector2, radius: float) -> void:
+	_add_curve(_rasterize(PackedVector2Array([center]), radius * 2.0), P.GRASS, P.GRASS_DARK, 0.08, Color("7cbf5a"))
+
+
+## A winding dirt trail. Call from _plan().
+func curve_trail(points: Array, width := 2.6) -> void:
+	curve_walk(points, width, DIRT, DIRT_DARK)
+
+
+## A curved road (a roundabout, a sweeping bend). Call from _plan().
+func curve_road(points: Array, width := 7.0) -> void:
+	var line := _spline(points)
+	_add_curve(_rasterize(line, width), P.ASPHALT, P.ASPHALT, 0.047, Color("5a5d68"))
+	_nav_along(line)
+
+
+## Points from a to b that wander side to side by up to `amp` metres.
+func wander(a: Vector2, b: Vector2, amp := 4.0, every := 18.0) -> Array:
+	var n := maxi(2, ceili(a.distance_to(b) / every))
+	var side := (b - a).normalized().orthogonal()
+	var phase := rng.randf() * TAU
+	var out := []
+	for k in n + 1:
+		var t := float(k) / n
+		var off := 0.0 if k == 0 or k == n else sin(phase + t * PI * 2.3) * amp * rng.randf_range(0.6, 1.0)
+		out.append(a.lerp(b, t) + side * off)
+	return out
+
+
+## Points round an ellipse (or part of one, angles in radians).
+static func ellipse(center: Vector2, rx: float, rz: float, n := 28, from := 0.0, to := TAU) -> Array:
+	var out := []
+	for k in n + 1:
+		var a := lerpf(from, to, float(k) / n)
+		out.append(center + Vector2(cos(a) * rx, sin(a) * rz))
+	return out
+
+
+func _spline(points: Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in points.size() - 1:
+		var p0: Vector2 = points[maxi(i - 1, 0)]
+		var p1: Vector2 = points[i]
+		var p2: Vector2 = points[i + 1]
+		var p3: Vector2 = points[mini(i + 2, points.size() - 1)]
+		var n := maxi(2, ceili(p1.distance_to(p2) / 0.5))
+		for k in n:
+			var t := float(k) / n
+			var t2 := t * t
+			out.append(0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+				+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t2 * t))
+	if not points.is_empty():
+		out.append(points[-1])
+	return out
+
+
+## The 1 m cells within width/2 of the line, never over buildings or water.
+func _rasterize(line: PackedVector2Array, width: float) -> Dictionary:
+	var r := width / 2.0
+	var cells := {}
+	for s in line:
+		for x in range(floori(s.x - r), ceili(s.x + r)):
+			for z in range(floori(s.y - r), ceili(s.y + r)):
+				if Vector2(x + 0.5, z + 0.5).distance_to(s) <= r:
+					cells[Vector2i(x, z)] = true
+	return _drop_blocked(cells)
+
+
+func _drop_blocked(cells: Dictionary) -> Dictionary:
+	for cell: Vector2i in cells.keys():
+		var p := Vector2(cell.x + 0.5, cell.y + 0.5)
+		for b: Rect2 in c._blocked:
+			if b.has_point(p):
+				cells.erase(cell)
+				break
+	return cells
+
+
+func _add_curve(cells: Dictionary, color: Color, alt: Color, top: float, map_color: Color) -> void:
+	if cells.is_empty():
+		return
+	for cell in cells:
+		c._paved_cells[cell] = true
+	_curves.append({"cells": cells, "color": color, "alt": alt, "top": top})
+	for strip in _strips(cells):
+		c._map(strip, map_color, "", -1, false, "patch")
+
+
+## Cells merged into horizontal strips (for the maps).
+static func _strips(cells: Dictionary) -> Array:
+	var rows := {}
+	for cell: Vector2i in cells:
+		rows.get_or_add(cell.y, []).append(cell.x)
+	var out := []
+	for z in rows:
+		var xs: Array = rows[z]
+		xs.sort()
+		var start: int = xs[0]
+		var prev: int = xs[0]
+		for i in range(1, xs.size() + 1):
+			if i < xs.size() and int(xs[i]) == prev + 1:
+				prev = xs[i]
+				continue
+			out.append(Rect2(start, z, prev - start + 1, 1))
+			if i < xs.size():
+				start = xs[i]
+				prev = xs[i]
+	return out
+
+
+func _nav_along(line: PackedVector2Array) -> void:
+	var walked := 8.0
+	for i in line.size():
+		if i > 0:
+			walked += line[i].distance_to(line[i - 1])
+		if walked >= 8.0 or i == line.size() - 1:
+			walked = 0.0
+			c.nav_points.append(Vector3(line[i].x, 0, line[i].y))
+
+
+## Rounded kerbs wherever two roads cross or meet: each corner the roads both carry
+## on past gets a quarter-circle of asphalt, so junctions don't look like a grid.
+func _round_corners() -> void:
+	var R := CORNER_RADIUS
+	for a: Array in _roads:
+		if not a[1]:
+			continue
+		for b: Array in _roads:
+			if b[1]:
+				continue
+			var ra: Rect2 = a[0]  # along x
+			var rb: Rect2 = b[0]  # along z
+			if not ra.intersection(rb).has_area():
+				continue
+			for sx: int in [-1, 1]:
+				for sz: int in [-1, 1]:
+					var a_goes := ra.position.x < rb.position.x - R if sx < 0 else ra.end.x > rb.end.x + R
+					var b_goes := rb.position.y < ra.position.y - R if sz < 0 else rb.end.y > ra.end.y + R
+					if not (a_goes and b_goes):
+						continue
+					var corner := Vector2(rb.position.x if sx < 0 else rb.end.x, ra.position.y if sz < 0 else ra.end.y)
+					var center := corner + Vector2(sx * R, sz * R)
+					var cells := {}
+					for i in ceili(R):
+						for j in ceili(R):
+							var p := corner + Vector2(sx * (i + 0.5), sz * (j + 0.5))
+							if p.distance_to(center) > R:
+								cells[Vector2i(floori(p.x), floori(p.y))] = true
+					_add_curve(_drop_blocked(cells), P.ASPHALT, P.ASPHALT, 0.046, Color("5a5d68"))
+
+
+func _lay_curves() -> void:
+	for cv: Dictionary in _curves:
+		for cell: Vector2i in cv.cells:
+			var col: Color = cv.color if posmod(cell.x + cell.y, 2) == 0 else cv.alt
+			c._vbox(Vector3(cell.x + 0.5, float(cv.top) - 0.06, cell.y + 0.5), Vector3(1.0, 0.12, 1.0), col, 0.02)
 
 # --- Water ---------------------------------------------------------------------------------------
 

@@ -179,6 +179,7 @@ var _body: StaticBody3D
 var _rng := RandomNumberGenerator.new()
 var _paved: Array[Rect2] = []
 var _blocked: Array[Rect2] = []  # buildings, water: no trees or grass here
+var _paved_cells := {}  # Vector2i (1 m cells) under curved paths and road corners
 var _oy := 0.0  # height offset of the storey being built
 var wall_color := P.WALL  # buildings can restyle walls and window frames
 var frame_color := Color("3f86a8")
@@ -387,6 +388,8 @@ func _label(text: String, pos: Vector3, font_size: int, color: Color, yaw := 0.0
 
 
 func _is_paved(x: float, z: float) -> bool:
+	if _paved_cells.has(Vector2i(floori(x), floori(z))):
+		return true
 	for r in _paved:
 		if r.has_point(Vector2(x, z)):
 			return true

@@ -19,8 +19,10 @@ const PHONE_APPS := [
 	{"name": "Trade", "icon": "trade", "color": Color("ff9a3c")},
 	{"name": "Tracker", "icon": "radar", "color": Color("ff8aa8")},
 	{"name": "Navigate", "icon": "route", "color": Color("b07cff")},
+	{"name": "Help Out", "icon": "help", "color": Color("5fd3c5")},
 ]
 const NAV_APP := 5
+const HELP_APP := 6
 const ROUTE_SHOW := 10.0  # seconds the Navigate trail stays on the floor and the minimap
 const MAX_STAFF_TAGS := 6  # phone tracker: only the nearest few get a name tag
 
@@ -58,6 +60,13 @@ class AppIcon extends Control:
 				draw_arc(c, 8, 0, TAU, 24, INK, 2.0, true)
 				draw_line(c, c + Vector2(11, -11), INK, w, true)
 				draw_circle(c + Vector2(-6, 6), 2.5, INK)
+			"help":
+				# A speech bubble with a heart: texting friends inside.
+				draw_rect(Rect2(c + Vector2(-16, -14), Vector2(32, 22)), INK, false, w)
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-8, 8), c + Vector2(-2, 8), c + Vector2(-10, 15)]), INK)
+				draw_circle(c + Vector2(-4, -5), 4.0, INK)
+				draw_circle(c + Vector2(4, -5), 4.0, INK)
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-8, -4), c + Vector2(8, -4), c + Vector2(0, 5)]), INK)
 			"route":
 				var pts := PackedVector2Array([c + Vector2(-13, 13), c + Vector2(-13, 2), c + Vector2(4, 2), c + Vector2(4, -8)])
 				draw_polyline(pts, INK, w, true)
@@ -710,6 +719,7 @@ func setup_map(campus: RefCounted) -> void:
 	GameInput.rebound.connect(relabel)
 	hint.tree_exiting.connect(func(): GameInput.rebound.disconnect(relabel))
 	hint.add_theme_font_size_override("font_size", 12)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.modulate = Color(1, 1, 1, 0.65)
 	col.add_child(hint)
 	col.add_child(_section("FLOORS"))
@@ -737,9 +747,17 @@ func setup_map(campus: RefCounted) -> void:
 					game.variant = int(v.trim_prefix("--variant="))
 			add_child(game)
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		if arg.begins_with("--phone="):  # dev: --phone=-1..5 opens the home screen / that phone app
+		if arg.begins_with("--phone="):  # dev: --phone=-1..6 opens the home screen / that phone app
 			_phone_app = int(arg.trim_prefix("--phone="))
 			toggle_phone.call_deferred()
+		if arg == "--helpbot":  # dev: once escaped, send every kind of help to the other players
+			get_tree().create_timer(14.0).timeout.connect(func():
+				var director: Node = get_parent().get_node("Director")
+				for pid in director.status:
+					if int(pid) != multiplayer.get_unique_id():
+						for action in ["help_answers", "prank_call", "deliver", "give"]:
+							director.request.rpc_id(1, action, {"to": int(pid), "score": 80, "cash": 10})
+							await get_tree().create_timer(0.5).timeout)
 		if arg == "--navshow":  # dev: the Navigate trail to your seat, a few seconds in
 			get_tree().create_timer(5.0).timeout.connect(func(): _route_until = _now() + ROUTE_SHOW)
 		if arg == "--scan":  # dev: staff tracker on, a few seconds in
@@ -1150,6 +1168,9 @@ func open_questions() -> void:
 		_ask.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		_ask.grow_vertical = Control.GROW_DIRECTION_BOTH
 		_ask.custom_minimum_size = Vector2(640, 0)
+		# A little right of centre: clear of the side-quest card on the left.
+		_ask.offset_left = 72
+		_ask.offset_right = 72
 		_ask.add_to_group("modal_ui")
 		add_child(_ask)
 	for c in _ask.get_children():
@@ -1426,6 +1447,7 @@ func _refresh_phone(director: Node, me: Node, st: Dictionary, delta: float) -> v
 		2: _app_wallet(director, st)
 		3: _app_trade(director, me, st)
 		4: _app_tracker(me)
+		HELP_APP: _app_help(director, st)
 
 
 func _phone_text(text: String, size_px := 14, color := Color.WHITE) -> Label:
@@ -1571,6 +1593,85 @@ func _app_tracker(me: Node) -> void:
 		_phone_text("Recharging...  %ds" % int(ceil(me.phone_ready - now)), 16, Color("ffb37a"))
 	else:
 		_phone_body.add_child(_phone_button("SCAN FOR STAFF", func(): me.scan_staff(), Color("7fe0a0")))
+
+
+# --- Phone: Help Out (after you escape) ----------------------------------------------------------
+
+func _app_help(director: Node, st: Dictionary) -> void:
+	_phone_text("HELP FRIENDS STILL INSIDE", 15, Color("5fd3c5"))
+	if st.get("state", "") != "escaped":
+		_phone_text("Escape the university first. From outside you can text friends their test answers, prank-call the staff chasing them, send money and order samosa delivery.", 12, Color(1, 1, 1, 0.65))
+		return
+	_phone_text("Each help: +%d points. Answers: once per friend per period." % director.ASSIST_POINTS, 12, Color(1, 1, 1, 0.6))
+	var me := multiplayer.get_unique_id()
+	var any := false
+	for pid in director.status:
+		var id := int(pid)
+		if id == me:
+			continue
+		any = true
+		var ft: Dictionary = director.status[pid]
+		var who := str(Network.players.get(id, {}).get("name", "Friend"))
+		var room: int = director.current_room(id)
+		var r: Dictionary = director.rooms[room] if room < director.rooms.size() else {}
+		var now: float = director.elapsed
+		var line := ""
+		match str(ft.state):
+			"escaped": line = "Out already. Legend."
+			"detention": line = "In DETENTION (%s)" % _clock(float(ft.timer))
+			"chased": line = "Being CHASED!"
+			_:
+				var key := "%d:%d:%d" % [int(director.world.period), room, int(r.get("exam_id", 0))]
+				if str(ft.get("exam_key", "")) == key:
+					line = "%s · test done" % Network.CLASSROOMS[room]
+				elif float(r.get("exam_until", -100.0)) > now:
+					line = "%s · TEST NOW!" % Network.CLASSROOMS[room]
+				elif float(r.get("exam_at", 99999.0)) < 90000.0:
+					line = "%s · test in %s" % [Network.CLASSROOMS[room], _clock(float(r.exam_at) - now)]
+				else:
+					line = "%s · in class" % Network.CLASSROOMS[room]
+		_phone_text("\n%s" % who, 16, Color("7fd0ea"))
+		_phone_text(line, 12, Color("ff6a6a") if ft.state == "chased" else Color(1, 1, 1, 0.75))
+		var inside: bool = str(ft.state) in ["class", "chased"]
+		if not inside:
+			continue
+		var sent: bool = (st.get("helped", {}) as Dictionary).has("%d:%d" % [id, int(director.world.period)])
+		var grid := GridContainer.new()
+		grid.columns = 2
+		grid.add_theme_constant_override("h_separation", 6)
+		grid.add_theme_constant_override("v_separation", 6)
+		_phone_body.add_child(grid)
+		grid.add_child(_phone_button("Answers sent" if sent else "Text answers", _open_help_exam.bind(director, id, room),
+			Color("5fd3c5"), not sent and _exam == null))
+		grid.add_child(_phone_button("Prank call", func(): director.request.rpc_id(1, "prank_call", {"to": id}), Color("ff8aa8")))
+		grid.add_child(_phone_button("Send Rs 10", func(): director.request.rpc_id(1, "give", {"to": id, "cash": 10}),
+			Color("ffd24a"), int(st.get("cash", 0)) >= 10))
+		grid.add_child(_phone_button("Samosa Rs %d" % director.DELIVERY_PRICE, func(): director.request.rpc_id(1, "deliver", {"to": id}),
+			Color("e0a050"), int(st.get("cash", 0)) >= director.DELIVERY_PRICE))
+	if not any:
+		_phone_text("\nNobody else in this session.", 13, Color(1, 1, 1, 0.5))
+
+
+## Texting answers: you sit your friend's test on the phone; they get your score as a safety net.
+func _open_help_exam(director: Node, to: int, room: int) -> void:
+	if _exam != null:
+		return
+	if phone_open():
+		toggle_phone()
+	var game: Control = ExamGame.new()
+	game.subject = room
+	game.time_left = 25.0
+	game.finished.connect(func(score: int):
+		director.request.rpc_id(1, "help_answers", {"to": to, "score": score})
+		_exam = null
+		game.remove_from_group("modal_ui")
+		game.visible = false
+		game.queue_free()
+		if should_capture():
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED)
+	add_child(game)
+	_exam = game
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 # --- Phone: Navigate --------------------------------------------------------------------------------
@@ -1932,7 +2033,8 @@ func _map_markers(director: Node, me: Node, players: Node, npcs: Node, floor_sho
 			continue
 		var other_floor: bool = _campus.level_of(npc.global_position) != floor_shown
 		out.append({"at": Vector2(npc.global_position.x, npc.global_position.z), "alert": npc.alert, "other_floor": other_floor,
-			"text": npc.display_name.get_slice(" (", 0), "kind": "staff"})
+			"text": npc.display_name.get_slice(" (", 0), "kind": "staff",
+			"yaw": npc.rotation.y, "fov": float(npc.view_fov) if Settings.show_vision else 0.0, "reach": float(npc.view_range)})
 	# Friends, then you on top.
 	for p in players.get_children():
 		if p == me:
@@ -2000,7 +2102,10 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 	var room: int = director.current_room(id)
 	var r: Dictionary = director.rooms[room] if room < director.rooms.size() else {}
 	_refresh_timetable(director, me, st, room, now)
-	if st.state != "class" or r.is_empty():
+	if st.state == "escaped":
+		_attendance.text = "Out! Phone > Help Out"
+		_attendance.add_theme_color_override("font_color", Color("7fe0a0"))
+	elif st.state != "class" or r.is_empty():
 		_attendance.text = ""
 	elif r.calling:
 		_attendance.text = "ATTENDANCE NOW! Be in your seat!"
@@ -2037,7 +2142,11 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 		"detention":
 			_show_banner("DETENTION   %s\nType your lines to get out sooner (-5s each)" % _clock(st.timer), Color("f2a93b"))
 		"escaped":
-			_show_banner("YOU ESCAPED THE UNIVERSITY!   %s\n%s" % [_clock(st.time), _campus.win_text], Color("48b06a"))
+			if now - float(st.time) < 8.0:
+				_show_banner("YOU ESCAPED THE UNIVERSITY!   %s
+%s" % [_clock(st.time), _campus.win_text], Color("48b06a"))
+			else:  # smaller, so helpers can see what they're doing
+				_show_banner("OUT OF CAMPUS  ·  escaped in %s" % _clock(st.time), Color("48b06a"))
 		_:
 			var passing: float = float(director.world.passing_until) - now
 			var test_left: float = float(r.get("exam_until", -100.0)) - now
@@ -2252,7 +2361,8 @@ func _show_results(results: Array) -> void:
 	for r in results:
 		var line := Label.new()
 		var fate := "ESCAPED in %s" % _clock(r.time) if r.escaped else "still on campus"
-		line.text = "%d.  %s   —   %d pts   (%s, %d quests, tests %d, caught %d×)" % [rank, r.name, r.score, fate, r.quests, int(r.get("tests", 0)), r.caught]
+		var helped := ", helped %d×" % int(r.assists) if int(r.get("assists", 0)) > 0 else ""
+		line.text = "%d.  %s   —   %d pts   (%s, %d quests, tests %d, caught %d×%s)" % [rank, r.name, r.score, fate, r.quests, int(r.get("tests", 0)), r.caught, helped]
 		line.add_theme_font_size_override("font_size", 20 if rank == 1 else 17)
 		line.add_theme_color_override("font_color", Color("ffc93c") if rank == 1 else Color.WHITE)
 		_end_list.add_child(line)

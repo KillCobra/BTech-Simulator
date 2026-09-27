@@ -56,7 +56,13 @@ func _plan() -> void:
 	walk(Rect2(-9, -262, 4, 150))
 	walk(Rect2(5, -262, 4, 150))
 	walk(Rect2(-20, -116, 40, 6), P.STONE, P.STONE_DARK)  # forecourt of the quadrangle
-	walk(Rect2(-QX - 5.0, -22, 4, 58))              # back door of the north wing -> hostels
+	# Not all straight lines: a roundabout round the founder's statue, a promenade
+	# round the lake, and footpaths worn across the lawns.
+	curve_road(ellipse(Vector2(0, -140), 9.0, 9.0, 32), 5.0)
+	round_lawn(Vector2(0, -140), 6.4)
+	curve_walk(_rounded_loop(Rect2(76, -240, 112, 86), 12.0), 3.0)
+	curve_walk([Vector2(-QX - 3.0, -20), Vector2(-50, -4), Vector2(-45, 12), Vector2(-38, 26), Vector2(-31, 38)])  # back door -> mess hall
+	curve_walk([Vector2(-18, -176), Vector2(-11, -170), Vector2(10, -166), Vector2(14, -156)], 2.6)  # Fountain Sq. -> library
 	walk(Rect2(-22, -276, 44, 2))                   # forecourt outside the gate
 	walk(Rect2(-236, -290, 472, 4))                 # far pavement
 	walk(Rect2(-52, -192, 34, 32), P.STONE, P.STONE_DARK, "Fountain Sq.")
@@ -201,6 +207,17 @@ func _quadrangle() -> void:
 		[Vector3(32, 3.6, -84), Vector3(32, 3.6, -36)],
 	]
 	finish_campus()
+
+
+## Points round a rectangle with rounded corners (a loop path).
+func _rounded_loop(r: Rect2, radius: float) -> Array:
+	var out := []
+	var corners := [[Vector2(r.end.x - radius, r.end.y - radius), 0.0], [Vector2(r.position.x + radius, r.end.y - radius), PI / 2.0],
+		[Vector2(r.position.x + radius, r.position.y + radius), PI], [Vector2(r.end.x - radius, r.position.y + radius), PI * 1.5]]
+	for cn: Array in corners:
+		out.append_array(ellipse(cn[0], radius, radius, 6, cn[1], cn[1] + PI / 2.0))
+	out.append(out[0])
+	return out
 
 
 func walk_slab(r: Rect2) -> void:
@@ -503,4 +520,3 @@ func _nav() -> void:
 	nav_line(Vector2(-55, -40), Vector2(-55, -150))
 	nav_line(Vector2(-194, 46), Vector2(-194, 94))
 	nav_line(Vector2(-194, -110), Vector2(-194, 30))
-	nav_line(Vector2(-QX - 3.0, -20), Vector2(-QX - 3.0, 38))

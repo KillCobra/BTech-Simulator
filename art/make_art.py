@@ -4,7 +4,7 @@ campus wall, halfway to freedom.
 
 Run from the project root:  python art/make_art.py
 Writes art/icon.png (1024), art/icon.ico (16-256) and art/splash.png (1280x720).
-Needs Pillow.
+Needs Pillow. Text uses the game's pixel font (fonts/Jersey10-Large.ttf).
 """
 import random
 from pathlib import Path
@@ -12,6 +12,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = Path(__file__).parent
+PIXEL_FONT = HERE.parent / "fonts" / "Jersey10-Large.ttf"  # the game's pixel font
 
 # Palette (same values as scripts/palette.gd).
 GRASS = "#8cc45c"
@@ -191,7 +192,7 @@ def make_splash():
     draw_scene(s, 22 * ss, img, (W * 0.28, H * 0.52))
     # Logo like the main menu's: gold, thick ink outline, drop shadow.
     d = ImageDraw.Draw(img)
-    font = ImageFont.truetype("C:/Windows/Fonts/ariblk.ttf", 118 * ss)
+    font = ImageFont.truetype(str(PIXEL_FONT), 104 * ss)
     tx, ty = W * 0.52, H * 0.26
     for i, line in enumerate(("BUNK", "MASTER")):
         pos = (tx, ty + i * 128 * ss)
@@ -200,7 +201,7 @@ def make_splash():
                                     stroke_width=12 * ss, stroke_fill=(0, 0, 0, 110))
         img.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(4 * ss)))
         d.text(pos, line, font=font, fill=rgb(GOLD), stroke_width=12 * ss, stroke_fill=rgb(INK))
-    small = ImageFont.truetype("C:/Windows/Fonts/ariblk.ttf", 30 * ss)
+    small = ImageFont.truetype(str(PIXEL_FONT), 30 * ss)
     d.text((tx + 6 * ss, ty + 280 * ss), "sneak out. don't get caught.", font=small, fill=rgb(INK))
     img.resize((1280, 720), Image.LANCZOS).convert("RGB").save(HERE / "splash.png")
 

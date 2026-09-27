@@ -49,14 +49,15 @@ func _plan() -> void:
 	trail(Rect2(-38, -310, 6, 10))
 	road(Rect2(-250, -320, 500, 10), true)
 	# Footpaths.
-	trail(Rect2(-160, -50.5, 157, 3))               # to the cabins
-	trail(Rect2(3, -71.5, 112, 3))                  # to the observatory
+	# Forest trails wander (only the lodge forecourt stays straight).
+	curve_trail([Vector2(-3, -49)] + wander(Vector2(-62, -49), Vector2(-160, -49), 4.0))  # to the cabins
+	curve_trail(wander(Vector2(3, -70), Vector2(115, -70), 4.0))  # to the observatory
 	trail(Rect2(10, 32.5, 3, 32))                   # north lodge -> north woods
-	trail(Rect2(11.5, 62, 90, 3))
+	curve_trail(wander(Vector2(11.5, 63.5), Vector2(100, 63.5), 3.0))
 	trail(Rect2(98.5, 62, 3, 18))                   # -> creek culvert
-	trail(Rect2(-220, -262, 182, 3))                # south bank -> logging gate
-	trail(Rect2(-32, -242, 252, 3))                 # south bank -> fallen tree
-	trail(Rect2(-35, -155.5, 115, 3))               # road -> dining lodge
+	curve_trail(wander(Vector2(-38, -260.5), Vector2(-221, -260.4), 4.0))  # south bank -> logging gate
+	curve_trail(wander(Vector2(-32, -240.5), Vector2(221, -240), 5.0))  # south bank -> fallen tree
+	curve_trail(wander(Vector2(-35, -155), Vector2(80, -155), 2.5))  # road -> dining lodge
 	walk(Rect2(52, -104, 16, 16), DIRT, DIRT_DARK, "Campfire")
 	water(RIVER, Vector3.ZERO, "River", Vector2(0, 1))
 	bridge_area(ROAD_BRIDGE)

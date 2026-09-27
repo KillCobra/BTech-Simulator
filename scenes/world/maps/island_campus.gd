@@ -77,6 +77,10 @@ func _plan() -> void:
 	road(Rect2(-260, -404, 520, 10), true)               # mainland coast road
 	walk(Rect2(-14, -210, 28, 14), P.STONE, P.STONE_DARK, "Toll")
 	walk(Rect2(-3, 30.4, 6, 9.6))                        # north block -> north ring
+	# Winding island paths between the buildings (not everything follows the ring road).
+	curve_walk([Vector2(-60, -108), Vector2(-56, -92), Vector2(-68, -78), Vector2(-78, -68), Vector2(-80, -54)], 2.6)  # aquarium -> library
+	curve_walk([Vector2(56, -110), Vector2(44, -96), Vector2(30, -78), Vector2(14, -62), Vector2(5, -52)], 2.6)  # marine biology -> institute
+	curve_walk([Vector2(150, -74), Vector2(140, -63), Vector2(124, -58), Vector2(108, -50), Vector2(104, -36)], 2.6)  # boathouse -> union
 	for b in BUILDINGS:
 		reserve((b[0] as Rect2).grow(0.6))
 		map_rect(b[0], (b[2] as Color).darkened(0.3), (b[4] as String).capitalize(), false, "building")

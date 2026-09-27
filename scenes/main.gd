@@ -1222,10 +1222,7 @@ func _clear_ui() -> void:
 
 func _make_theme() -> Theme:
 	var th := Theme.new()
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["Segoe UI", "Arial", "sans-serif"])
-	font.font_weight = 900
-	th.default_font = font
+	th.default_font = preload("res://scripts/fonts.gd").bold()
 	th.default_font_size = 18
 
 	th.set_stylebox("panel", "PanelContainer", _style(PANEL, 22, 26))

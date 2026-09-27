@@ -10,7 +10,7 @@ const SECTION := "settings"
 ## Keys that are saved/loaded, in file order.
 const KEYS := [
 	"mouse_sensitivity", "fov", "master_volume", "music_volume", "sfx_volume",
-	"quality", "fullscreen", "player_name", "smooth_edges",
+	"quality", "fullscreen", "player_name", "smooth_edges", "show_vision",
 ]
 
 enum Quality { LOW, MEDIUM, HIGH }
@@ -23,6 +23,7 @@ var sfx_volume := 0.9 ## Linear 0 - 1.
 var quality := 2 ## 0 Low, 1 Medium, 2 High.
 var fullscreen := false
 var smooth_edges := false ## Temporal anti-aliasing: no edge shimmer, slightly softer in motion.
+var show_vision := true ## Draw where staff can see: vision wedges on the minimap and the big map.
 var player_name := "Student"
 
 
@@ -110,6 +111,8 @@ func _assign(key: String, value: Variant) -> void:
 			fullscreen = bool(value)
 		"smooth_edges":
 			smooth_edges = bool(value)
+		"show_vision":
+			show_vision = bool(value)
 		"player_name":
 			var s := str(value).strip_edges()
 			player_name = s if not s.is_empty() else "Student"

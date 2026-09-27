@@ -70,6 +70,16 @@ func _ready() -> void:
 	_style_toggle(smooth)
 	toggles.add_child(smooth)
 
+	var vision := CheckButton.new()
+	vision.text = "STAFF VISION ON MAP"
+	vision.button_pressed = bool(_s.show_vision)
+	vision.focus_mode = Control.FOCUS_NONE
+	vision.toggled.connect(func(on: bool): _s.set_value("show_vision", on))
+	_style_toggle(vision)
+	var vision_row := HBoxContainer.new()  # keeps the switch next to its label
+	vision_row.add_child(vision)
+	add_child(vision_row)
+
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 12)
 	add_child(buttons)
@@ -380,10 +390,7 @@ func _has_inherited_theme() -> bool:
 ## Used only when no ancestor provides a theme: gives the menu's chunky font.
 func _make_fallback_theme() -> Theme:
 	var th := Theme.new()
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["Segoe UI", "Arial", "sans-serif"])
-	font.font_weight = 900
-	th.default_font = font
+	th.default_font = preload("res://scripts/fonts.gd").bold()
 	th.default_font_size = 18
 	th.set_color("font_color", "Label", Color.WHITE)
 	return th
