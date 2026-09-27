@@ -463,6 +463,8 @@ func _interact() -> void:
 			_request("talk", {"npc": _target.name})
 		"friend":
 			_request("boost", {"friend": _target.id})
+		"vouch":
+			_request("vouch", {"friend": _target.id})
 		"give":
 			if _target.has("cash"):
 				_request("give", {"to": _target.id, "cash": int(_target.cash)})
@@ -507,6 +509,9 @@ func _find_target() -> Dictionary:
 		if to_friend.length() >= 1.5 or absf(p.global_position.y - me.y) >= 1.0 \
 				or not (to_friend.length() < 0.4 or fwd.dot(to_friend.normalized()) > 0.5):
 			continue
+		var fst: Dictionary = _director.status.get(int(str(p.name)), {}) if _director else {}
+		if not (fst.get("question", {}) as Dictionary).is_empty():
+			return {"type": "vouch", "id": int(str(p.name)), "label": "Vouch for %s (\"They're with me!\")" % p.display_name}
 		if p.crouching:
 			return {"type": "friend", "id": int(str(p.name)), "label": "Get a boost from %s" % p.display_name}
 		# Standing friend: hand over your first item (contraband goes in their bag, so it's
@@ -684,6 +689,8 @@ func _move(delta: float) -> void:
 					_request("proxy", {})
 				"shove":
 					_request("shove", {})
+				"excuse0", "excuse1", "excuse2", "excuse3":
+					_request("excuse", {"k": int(action.right(1))})
 				"ping":
 					_ping()
 				"throw":

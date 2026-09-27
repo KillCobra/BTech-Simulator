@@ -57,6 +57,19 @@ const TEACHERS := [
 	["Dr. Alvarez", false, "loves questions, hears nothing"],
 	["Mrs. Iyer", true, "hears everything, believes you once"],
 ]
+## How each teacher plays (index = classroom). range/fov: eyes; ears: how far they hear
+## voices; gullible: how well excuses work on them; leash: gives up a chase this far
+## from their board; remembers: believes one excuse, then never again.
+const TEACHER_BRAINS := [
+	{"range": 14.0, "fov": 100.0, "alertness": 1.15, "ears": 1.0, "gullible": 0.45, "chase_speed": 4.4, "likes_marks": true},
+	{"range": 22.0, "fov": 70.0, "alertness": 1.0, "ears": 1.0, "gullible": 1.0, "chase_speed": 4.1, "leash": 15.0},
+	{"range": 12.0, "fov": 100.0, "alertness": 0.8, "ears": 0.6, "gullible": 1.3, "chase_speed": 4.2, "lectures": true},
+	{"range": 14.0, "fov": 100.0, "alertness": 1.0, "ears": 1.6, "gullible": 1.8, "chase_speed": 4.4, "remembers": true},
+]
+## Dr. Alvarez, asked a smart question: a lecture at the board (everyone's chance to sneak out).
+const LECTURE := ["Ah! An EXCELLENT question. You see...", "...a linked list is really just a treasure hunt...",
+	"...and each node points to the next, like gossip in a canteen...", "...which is why, in 1962, a man named Hoare...",
+	"...no, no, this is the fascinating part...", "...where was I? Ah yes, the stack!", "...any questions? No? Good. Where were we..."]
 const SHOUTS := ["Hey! Stop right there!", "Where do you think you're going?!", "Come back here!", "You! Which class?!"]
 
 const ITEMS := {
@@ -190,6 +203,14 @@ func start(seats: Dictionary, minutes: float) -> void:
 	world.passing_time = _passing_time()
 	_schedule_period(0)
 	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--question="):  # dev: the nearest staff grabs and questions the host after N s
+			get_tree().create_timer(float(arg.trim_prefix("--question="))).timeout.connect(func():
+				var me: Node3D = players_root.get_node_or_null("1")
+				var b := _nearest_brain(me.global_position, 999.0, ["teacher", "patrol", "gate"]) if me else {}
+				if not b.is_empty():
+					_start_chase(b, 1, me.global_position)
+					b.npc.global_position = me.global_position + Vector3(0.8, 0, 0)
+					print("[dev] %s grabs the host" % b.npc.display_name))
 		if arg.begins_with("--jail="):  # dev: the host is sent to detention after N s
 			get_tree().create_timer(float(arg.trim_prefix("--jail="))).timeout.connect(func():
 				for b in _brains:
@@ -207,12 +228,13 @@ func start(seats: Dictionary, minutes: float) -> void:
 	for i in campus.classes.size():
 		var spots: Dictionary = campus.classes[i]
 		var fem: bool = TEACHERS[i][1]
-		_add_npc({"id": "Teacher%d" % i, "role": "teacher", "room": i, "name": TEACHERS[i][0],
-			"pos": spots.board, "yaw": spots.yaw, "look": _staff_look(100 + i, fem), "voice": (1.15 if fem else 0.8) + i * 0.05},
-			{"state": "write", "timer": 6.0, "range": 14.0, "fov": 100.0, "walk": 1.4, "chase_speed": 4.4, "alertness": 1.0, "chaser": true})
+		var brain := {"state": "write", "timer": 6.0, "walk": 1.4, "chaser": true}
+		brain.merge(TEACHER_BRAINS[i % TEACHER_BRAINS.size()])
+		_add_npc({"id": "Teacher%d" % i, "role": "teacher", "room": i, "name": TEACHERS[i % TEACHERS.size()][0],
+			"pos": spots.board, "yaw": spots.yaw, "look": _staff_look(100 + i, fem), "voice": (1.15 if fem else 0.8) + i * 0.05}, brain)
 	_add_npc({"id": "Guard", "role": "gate", "room": -1, "name": "Sergei (Guard)",
 		"pos": campus.gate_post, "yaw": campus.gate_yaw, "look": P.make_guard_look(7, true), "voice": 0.7},
-		{"state": "post", "timer": 20.0, "range": 14.0, "fov": 110.0, "walk": 1.6, "chase_speed": 4.8, "alertness": 2.2, "chaser": true})
+		{"state": "post", "timer": 20.0, "range": 14.0, "fov": 110.0, "walk": 1.6, "chase_speed": 4.8, "alertness": 2.2, "chaser": true, "gullible": 0.7})
 	# School patrols come on duty as the heat rises (see Rules.HEAT_STAFF).
 	_pending_staff.append([Rules.HEAT_STAFF.Peon, func():
 		_add_patrol("Peon", "Mr. Mendes (Caretaker)", campus.staff_loops.peon, P.make_guard_look(9, false), 1.9, 4.5, 1.4, 11.0, 0.75)])
@@ -222,7 +244,9 @@ func start(seats: Dictionary, minutes: float) -> void:
 		prefect.bag = null
 		prefect.cap = Color("e0524f")
 		prefect.mustache = false
-		_add_patrol("Prefect", "Aisha (Prefect)", campus.staff_loops.prefect, prefect, 1.8, 4.6, 1.0, 10.0, 1.3)])
+		_add_patrol("Prefect", "Aisha (Prefect)", campus.staff_loops.prefect, prefect, 1.8, 4.6, 1.0, 10.0, 1.3)
+		_brains[-1].chaser = false  # she doesn't chase you: she runs to tell your teacher
+		_brains[-1].tells = true])
 	_pending_staff.append([Rules.HEAT_STAFF.Proctor, func():
 		var proctor := _staff_look(888, false)
 		proctor.shirt = Color("4f7fd9")
@@ -231,7 +255,8 @@ func start(seats: Dictionary, minutes: float) -> void:
 		var vp := _staff_look(777, false)
 		vp.shirt = Color("9a62d6")
 		vp.glasses = true
-		_add_patrol("VP", "Dr. Haddad (Vice Principal)", campus.staff_loops.vp, vp, 1.4, 5.0, 1.15, 11.0, 1.1)])
+		_add_patrol("VP", "Dr. Haddad (Vice Principal)", campus.staff_loops.vp, vp, 1.4, 5.0, 1.15, 11.0, 1.1)
+		_brains[-1].gullible = 0.5])
 	_update_heat(true)
 
 	var ss: Dictionary = campus.staff_sit
@@ -573,7 +598,7 @@ func request(action: String, args: Dictionary) -> void:
 		return
 	# Out of the university: you can still ping, trade, boost a friend and throw paper
 	# balls back over the wall to pull staff away from friends still inside.
-	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver", "outside_bell", "shout"]:
+	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver", "outside_bell", "shout", "call_office"]:
 		return
 	match action:
 		"interact": _on_interact(id, p, int(args.get("i", -1)))
@@ -599,6 +624,9 @@ func request(action: String, args: Dictionary) -> void:
 		"outside_bell": _on_outside_bell(id, p)
 		"give": _on_give(id, p, int(args.get("to", -1)), int(args.get("cash", 0)), int(args.get("slot", -1)))
 		"shout": _on_shout(id, p, int(args.get("k", 0)))
+		"excuse": _on_excuse(id, p, int(args.get("k", -1)))
+		"vouch": _on_vouch(id, p, int(args.get("friend", -1)))
+		"call_office": _on_call_office(id, int(args.get("to", -1)))
 
 
 @rpc("authority", "call_local", "reliable")
@@ -662,9 +690,21 @@ func _on_ask(id: int, p: Node3D, kind: int, question: String) -> void:
 		0:  # intelligent: the teacher is pleased
 			st.sus = maxf(0.0, float(st.sus) - 20.0)
 			st.good_time = float(st.good_time) + 20.0
-			npc.stop(npc.yaw_towards(p.global_position - npc.global_position))
-			npc.say(reply, 4.0)
 			_pay(id, 5, "for a smart question")
+			if t.get("lectures", false):
+				# Dr. Alvarez can't help himself: 20 s at the board, back to the class.
+				t.state = "write"
+				t.timer = 20.0
+				t.lecture_until = elapsed + 20.0
+				t.lecture_i = 0
+				var spots: Dictionary = campus.classes[room]
+				npc.go_to(_path(npc.global_position, spots.board), t.walk)
+				npc.say(LECTURE[0], 3.5)
+				_log("%s asked Dr. Alvarez a smart question. He's LECTURING. Everyone, GO!" % _name(id))
+				_moment("lecture", id)
+			else:
+				npc.stop(npc.yaw_towards(p.global_position - npc.global_position))
+				npc.say(reply, 4.0)
 		1:  # quirky: laughs all round
 			st.sus = maxf(0.0, float(st.sus) - 8.0)
 			npc.stop(npc.yaw_towards(p.global_position - npc.global_position))
@@ -735,6 +775,9 @@ func _on_buy(id: int, p: Node3D, what: String) -> void:
 	if not _near_counter(p):
 		_tell(id, "Buy things at Pappu Uncle's canteen counter.", Color("ffb37a"))
 		return
+	if what.begins_with("bail:"):
+		_on_bail(id, int(what.trim_prefix("bail:")))
+		return
 	var price := -1
 	var level := 0
 	if what == "hall_pass" and _rule() == "no_pass":
@@ -763,6 +806,26 @@ func _on_buy(id: int, p: Node3D, what: String) -> void:
 		_tell(id, "Upgrade: %s (level %d)" % [UPGRADES[what][0], level + 1], Color("7fe0a0"))
 	st.cash = int(st.cash) - price
 	_npc_say("Uncle", ["Shukriya, beta!", "Good choice!", "Come again!"][_rng.randi() % 3])
+
+
+## Pappu Uncle sends the principal a plate of samosas "from the canteen"... and a
+## friend in detention gets let off. Rs 40.
+func _on_bail(id: int, to: int) -> void:
+	var st: Dictionary = status[id]
+	if not status.has(to) or status[to].state != "detention" or to == id:
+		_tell(id, "Nobody to bail out.", Color("ffb37a"))
+		return
+	if int(st.cash) < BAIL_PRICE:
+		_tell(id, "The principal's samosas cost Rs %d." % BAIL_PRICE, Color("ffb37a"))
+		return
+	st.cash = int(st.cash) - BAIL_PRICE
+	_npc_say("Uncle", "One plate for the principal... with your compliments. Heh heh.")
+	_release(to, "%s bribed the principal with Uncle's samosas. You're FREE!" % _name(id))
+	_tell(id, "Samosas sent. %s walks free!" % _name(to), Color("7fe0a0"))
+	_log("%s bribed %s out of detention with samosas!" % [_name(id), _name(to)])
+	_stat(id, "rescues")
+	_moment("rescue", id, to)
+	_moment("rescued", to, id)
 
 
 ## Trade with a classmate standing next to you: hand over money or an item.
@@ -1246,6 +1309,7 @@ func _on_throw(id: int, p: Node3D, from: Vector3, dir: Vector3) -> void:
 	if OS.get_cmdline_user_args().has("--trace"):
 		print("[paper] from %s landed %s after %.2fs" % [from, pos, t])
 	get_tree().create_timer(t).timeout.connect(func():
+		_paper_rescue(id, pos)
 		var pulled := _noise(pos, 11.0)
 		if status.has(id):
 			status[id].best_distraction = maxi(int(status[id].best_distraction), pulled)
@@ -1403,6 +1467,9 @@ func _on_shove(id: int, p: Node3D) -> void:
 	npc.say(["Arre!", "Oof!", "How DARE you?!", "Aaah!"][_rng.randi() % 4], 1.8)
 	st.shoves += 1
 	st.grabbed = false
+	st.question = {}
+	if target.has("report_on"):
+		_stop_report(target)
 	_fx_all("shove", npc.global_position, "")
 	if target.target == id:
 		_tell(id, "Shoved free! RUN!", Color("7fe0a0"))
@@ -1506,6 +1573,8 @@ func _start_alarm() -> void:
 	world.alarm_ready = elapsed + ALARM_COOLDOWN
 	world.heat_bumps = int(world.heat_bumps) + 1
 	_gather(campus.assembly, "Fire drill! Everyone out!")
+	for id in status:
+		_release(id, "FIRE DRILL! The principal ran out, and so did you. Walk back to class!")
 
 
 ## Principal's birthday: the staff go for cake at the canteen for a while.
@@ -1539,6 +1608,19 @@ func _open_service_gate() -> void:
 	world.gate_until = elapsed + GATE_OPEN_TIME
 	_fx_all("gate", campus.service_gate_pos, "")
 	_log("The service gate is open!")
+
+
+## A paper ball landing by the detention office: "someone did two of your lines!"
+func _paper_rescue(id: int, pos: Vector3) -> void:
+	if pos.distance_to(campus.detention_spot) > 7.0:
+		return
+	for other in status:
+		if other != id and status[other].state == "detention":
+			status[other].timer = maxf(2.0, float(status[other].timer) - 10.0)
+			_tell(other, "A paper ball through the window: %s did two of your lines! -10 s" % _name(id), Color("7fe0a0"))
+			_tell(id, "Bullseye! %s's detention: -10 s" % _name(other), Color("7fe0a0"))
+			_stat(id, "rescues")
+			_moment("rescue", id, other)
 
 
 ## Race mode: a paper ball landing on a rival makes staff look their way.
@@ -2227,6 +2309,9 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 		return
 	if _stunned(b):
 		return  # on the floor after a shove
+	if b.has("report_on"):
+		_report_step(b)
+		return  # running to tell a teacher
 	if b.state == "chase":
 		_chase_step(b, delta, players)
 		return
@@ -2253,6 +2338,8 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 			var rate: float = 34.0 * b.alertness * clampf(1.25 - dist / b.range, 0.3, 1.25) * (0.6 if p.crouching else 1.0)
 			if b.role == "teacher" and b.room == current_room(id):
 				rate *= 1.0 + 0.6 * int(st.strikes)  # an angry teacher misses nothing
+			if b.get("likes_marks", false) and _average_mark(id) >= 70.0:
+				rate *= 0.55  # Ms. Okafor forgives a lot from a good student
 			if dist < 4.0:
 				rate *= 2.5  # right under their nose
 			if b.state == "evacuate":
@@ -2270,6 +2357,8 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 		if spotted_sus >= 100.0 and status[spotted].state != "chased":
 			if b.chaser:
 				_start_chase(b, spotted, players[spotted].global_position)
+			elif b.get("tells", false):
+				_start_report(b, spotted)
 			else:
 				npc.say(["Chor! Chor! Somebody catch them!", "Shhh! PRINCIPAL MA'AM!"][0 if npc.name == "Uncle" else 1], 2.5)
 				_call_help(spotted, players[spotted].global_position, npc.display_name)
@@ -2366,6 +2455,9 @@ func _teacher(b: Dictionary, delta: float, players: Dictionary) -> void:
 			if npc.is_idle():
 				npc.stop(campus.classes[b.room].yaw)
 				b.timer -= delta
+				if elapsed < float(b.get("lecture_until", -1.0)) and int(b.t / 3.0) != int((b.t - delta) / 3.0):
+					b.lecture_i = int(b.get("lecture_i", 0)) + 1
+					npc.say(LECTURE[int(b.lecture_i) % LECTURE.size()], 3.0)
 				if b.timer <= 0.0:
 					if _rng.randf() < 0.3:
 						b.state = "patrol"
@@ -2583,6 +2675,12 @@ func _extra(b: Dictionary, _delta: float, players: Dictionary) -> void:
 		npc.go_to(_path(npc.global_position, b.loop[b.loop_i]), b.walk)
 
 
+## A student's average test mark so far this round (0 before their first test).
+func _average_mark(id: int) -> float:
+	var st: Dictionary = status.get(id, {})
+	return float(st.get("exam_total", 0)) / float(st.get("exams", 0)) if int(st.get("exams", 0)) > 0 else 0.0
+
+
 func _distracted(b: Dictionary) -> bool:
 	return elapsed < float(b.distracted_until)
 
@@ -2664,6 +2762,12 @@ func _chase_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		return
 	var p: Node3D = players[id]
 	var st: Dictionary = status[id]
+	if b.has("leash") and npc.global_position.distance_to(b.home) > float(b.leash):
+		# Mr. Tanaka doesn't do corridors.
+		npc.say("Hmph. Not worth leaving my class for. I KNOW your face, %s." % _name(id), 3.0)
+		st.sus = 70.0
+		_end_chase(b)
+		return
 	var seen := _can_see(npc, p, b.range * 1.4, 200.0)
 	var dist: float = npc.global_position.distance_to(p.global_position)
 	b.min_dist = minf(float(b.get("min_dist", 99.0)), dist)
@@ -2708,14 +2812,21 @@ func _chase_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		if float(b.get("grab_until", -1.0)) < 0.0:
 			b.grab_until = elapsed + GRAB_TIME
 			st.grabbed = true
-			npc.say("Got you now—!", 1.2)
-			_tell(id, "GRABBED!  Left-click to SHOVE free!", Color("ff6a6a"))
+			if _can_question(b, id, p):
+				_question(b, id)
+			else:
+				npc.say("Got you now—!", 1.2)
+				_tell(id, "GRABBED!  Left-click to SHOVE free!", Color("ff6a6a"))
 		elif elapsed >= float(b.grab_until):
-			_catch(b, id)
+			if not (st.get("question", {}) as Dictionary).is_empty():
+				_catch(b, id, "No answer? Principal's office. NOW.")
+			else:
+				_catch(b, id)
 			return
 	elif float(b.get("grab_until", -1.0)) >= 0.0 and dist > 2.2:
 		b.grab_until = -1.0
 		st.grabbed = false
+		st.question = {}
 	b.repath -= delta
 	if b.repath <= 0.0:
 		b.repath = 0.35
@@ -2736,6 +2847,7 @@ func _end_chase(b: Dictionary) -> void:
 	var id: int = b.target
 	if status.has(id):
 		status[id].grabbed = false
+		status[id].question = {}
 		var ran: float = elapsed - float(status[id].get("chase_from", elapsed))
 		if ran > 0.0 and status[id].state == "chased":
 			_stat(id, "chase", ran)
@@ -2759,6 +2871,7 @@ func _end_chase(b: Dictionary) -> void:
 
 func _catch(b: Dictionary, id: int, reason := "") -> void:
 	var st: Dictionary = status[id]
+	st.question = {}
 	st.catches = int(st.catches) + 1
 	st.peak = false
 	world.heat_bumps = int(world.heat_bumps) + 1
@@ -2799,6 +2912,300 @@ func _catch(b: Dictionary, id: int, reason := "") -> void:
 	_log("%s was caught by %s! Detention." % [_name(id), b.npc.display_name])
 	_teleport(id, campus.detention_spot, 0.0)
 	_end_chase(b)
+
+
+# --- Excuses: you get a few seconds to talk your way out -------------------------------------------
+
+const QUESTION_TIME := 4.0
+const QUESTION_LINES := ["Why are you outside your class, %s?", "And where do YOU think you're going, %s?",
+	"%s. Explain yourself. Now.", "Out of class again, %s? One good reason."]
+## id -> [what you say, how often it works (before the staff member's own gullibility)]
+const EXCUSES := {
+	"pass": ["I've got a hall pass, look!", 1.0],
+	"note": ["Medical emergency! Here's my note.", 0.9],
+	"book": ["Just returning this library book.", 0.75],
+	"washroom": ["Just coming back from the washroom!", 0.5],
+	"sent": ["%s sent me to fetch something.", 0.45],
+	"lost": ["I'm new! I'm looking for %s.", 0.35],
+	"snitch": ["It was %s! They made me do it!", 1.0],
+}
+const EXCUSE_OK := {
+	"pass": "Fine. Walk. Don't run.", "note": "Hmm... get well soon, then. Go.", "book": "The library's that way. Quickly!",
+	"washroom": "Washroom. Right. Straight back to class.", "sent": "Hmph. Tell them to fetch it themselves next time.",
+	"lost": "Lost? ...Your class is THAT way. Go.",
+}
+const EXCUSE_NO := {
+	"pass": "That pass is expired. Nice try.", "note": "That's YOUR handwriting.", "book": "That book's due in 2031. Nice try.",
+	"washroom": "The washroom is the OTHER way.", "sent": "Funny. I just saw them in the staff room.",
+	"lost": "Lost? Since September?",
+}
+
+
+## Can this staff member stop and question the student they just grabbed?
+func _can_question(b: Dictionary, id: int, p: Node3D) -> bool:
+	if p.hidden or b.saw_hide or b.role == "extra":
+		return false
+	return not (b.get("remember", {}) as Dictionary).has(id)
+
+
+## "Why are you outside your class?" A few seconds to pick an excuse (or shove and run).
+func _question(b: Dictionary, id: int) -> void:
+	var st: Dictionary = status[id]
+	b.grab_until = elapsed + QUESTION_TIME
+	var npc: Node = b.npc
+	npc.stop(npc.yaw_towards(players_root.get_node(str(id)).global_position - npc.global_position))
+	npc.say(QUESTION_LINES[_rng.randi() % QUESTION_LINES.size()] % _name(id), QUESTION_TIME)
+	var picks := _excuse_options(b, id)
+	var texts := []
+	for e: Array in picks:
+		texts.append(e[1])
+	st.question = {"by": str(npc.name), "who": str(npc.display_name).get_slice(" (", 0), "until": elapsed + QUESTION_TIME,
+		"ids": picks.map(func(e): return e[0]), "texts": texts, "friends": picks.map(func(e): return e[2])}
+	_moment("questioned", id)
+	print("[%.1f] %s questions %s: %s" % [elapsed, npc.display_name, _name(id), str(st.question.ids)])
+
+
+## [[id, text, friend id or -1], ...]: up to four excuses that make sense right now.
+func _excuse_options(b: Dictionary, id: int) -> Array:
+	var st: Dictionary = status[id]
+	var items: Array = st.items
+	var out := []
+	if items.has("hall_pass") or elapsed < float(st.pass_until):
+		out.append(["pass", EXCUSES.pass[0], -1])
+	if items.has("medical_note"):
+		out.append(["note", EXCUSES.note[0], -1])
+	if items.has("library_book"):
+		out.append(["book", EXCUSES.book[0], -1])
+	# A friend close by to blame.
+	var p: Node3D = players_root.get_node(str(id))
+	var blame := -1
+	var best := 30.0
+	for other in status:
+		var q: Node3D = players_root.get_node_or_null(str(other))
+		if other == id or q == null or q.hidden or status[other].state not in ["class", "chased"]:
+			continue
+		var d: float = q.global_position.distance_to(p.global_position)
+		if d < best:
+			best = d
+			blame = other
+	var talk := []
+	talk.append(["washroom", EXCUSES.washroom[0], -1])
+	var boss := "Dr. Haddad" if b.npc.name != "VP" else "Ms. Okafor"
+	talk.append(["sent", EXCUSES.sent[0] % boss, -1])
+	var room_name: String = Network.CLASSROOMS[current_room(id)]
+	talk.append(["lost", EXCUSES.lost[0] % ("the " + room_name if room_name == "Lab" else room_name), -1])
+	talk.shuffle()
+	var room := 3 if blame != -1 else 4
+	while out.size() < room and not talk.is_empty():
+		out.append(talk.pop_front())
+	if blame != -1:
+		out.append(["snitch", EXCUSES.snitch[0] % _name(blame), blame])
+	return out.slice(0, 4)
+
+
+## The student picked excuse `k` (index into their question's options).
+func _on_excuse(id: int, p: Node3D, k: int) -> void:
+	var st: Dictionary = status[id]
+	var q: Dictionary = st.get("question", {})
+	if q.is_empty() or elapsed > float(q.until) or k < 0 or k >= (q.ids as Array).size():
+		return
+	var b := _brain_by_name(str(q.by))
+	if b.is_empty() or b.target != id:
+		st.question = {}
+		return
+	var kind: String = q.ids[k]
+	var text: String = q.texts[k]
+	st.question = {}
+	_fx_all("shout", p.global_position, "%d|%s" % [id, text])  # everyone close by hears your excuse
+	var npc: Node = b.npc
+	if kind == "snitch":
+		_snitch(b, id, int(q.friends[k]))
+		return
+	var heard: Dictionary = b.get_or_add("heard", {})
+	var used: Array = heard.get_or_add(id, [])
+	var told: Dictionary = st.get_or_add("excuses_used", {})
+	var chance: float = float(EXCUSES[kind][1]) * float(b.get("gullible", 1.0))
+	if kind in ["pass", "note", "book"]:
+		chance = maxf(chance, float(EXCUSES[kind][1]) * 0.8)  # proof in hand beats a strict teacher
+	if kind == "washroom" and _near_kind(p.global_position, "toilet", 15.0):
+		chance += 0.3
+	if kind == "sent" and not _nearest_brain(p.global_position, 20.0, ["patrol"]).is_empty() and b.npc.name != "VP":
+		chance *= 0.3  # the person you named is right there
+	if kind == "lost" and Network.current_map == 0:
+		chance += 0.25  # First Day: everyone's a little lost
+	if _in_gate_zone(p.global_position) or b.get("outdoor", false):
+		chance *= 0.5  # at the gate, covered in mud...
+	if int(told.get(kind, 0)) >= 2:
+		chance *= 0.4  # staff talk to each other: they've heard that one today
+	if elapsed < float(st.get("vouched_until", -1.0)):
+		chance += 0.3
+	var repeat: bool = used.has(kind)
+	used.append(kind)
+	told[kind] = int(told.get(kind, 0)) + 1
+	if repeat or _rng.randf() > chance:
+		npc.say(("You used that one already, %s." % _name(id)) if repeat else str(EXCUSE_NO.get(kind, "Nice try.")), 3.0)
+		_moment("excuse_fail", id)
+		_log("%s tried \"%s\" on %s. It did NOT work." % [_name(id), text, npc.display_name])
+		_catch(b, id, "Principal's office. NOW.")
+		return
+	# It worked.
+	var items: Array = st.items
+	if kind == "pass" and elapsed >= float(st.pass_until):
+		items.erase("hall_pass")
+	elif kind == "note":
+		items.erase("medical_note")
+	npc.say(str(EXCUSE_OK.get(kind, "Fine. Go.")), 3.0)
+	if b.get("remembers", false):
+		(b.get_or_add("remember", {}) as Dictionary)[id] = true
+		_tell(id, "%s believed you. She won't a second time." % npc.display_name, Color("ffb37a"))
+	_let_go(b, id, 20.0)
+	_stat(id, "excuses")
+	_moment("excuse_ok", id)
+	_log("%s talked their way out of %s: \"%s\"" % [_name(id), npc.display_name, text])
+
+
+## Blame a friend: you walk, they're in trouble.
+func _snitch(b: Dictionary, id: int, friend: int) -> void:
+	var npc: Node = b.npc
+	var q: Node3D = players_root.get_node_or_null(str(friend))
+	_let_go(b, id, 15.0)
+	status[id].sus = 50.0
+	_stat(id, "snitched")
+	_moment("snitch", id, friend)
+	if q == null or not status.has(friend) or status[friend].state not in ["class", "chased"]:
+		npc.say("Whoever that is, I'll find them.", 2.5)
+		return
+	_stat(friend, "snitched_on")
+	_moment("snitched_on", friend, id)
+	_log("%s told %s it was %s!" % [_name(id), npc.display_name, _name(friend)])
+	_tell(friend, "%s TOLD %s IT WAS YOU!" % [_name(id).to_upper(), str(npc.display_name).get_slice(" (", 0).to_upper()], Color("ff6a6a"))
+	var ft: Dictionary = status[friend]
+	if b.chaser and ft.state == "class" and _can_see(npc, q, b.range * 1.3, 220.0):
+		npc.say("YOU! %s! Get back here!" % _name(friend), 2.5)
+		ft.sus = 100.0
+		_start_chase(b, friend, q.global_position)
+	else:
+		npc.say("%s, is it? I'll remember that name." % _name(friend), 2.5)
+		ft.sus = maxf(float(ft.sus), 85.0)
+		ft.strikes = mini(3, int(ft.strikes) + 1)
+
+
+## Released after a good excuse: a few seconds to walk back without being hunted.
+func _let_go(b: Dictionary, id: int, walk: float) -> void:
+	var st: Dictionary = status[id]
+	_end_chase(b)
+	st.state = "class"
+	st.grabbed = false
+	st.sus = 35.0
+	st.pass_until = maxf(float(st.pass_until), elapsed + walk)
+	b.distracted_until = elapsed + 2.5
+
+
+## A friend next to someone being questioned: "They're with me!" Their excuse
+## becomes more believable, and now the staff have noticed you too.
+func _on_vouch(id: int, p: Node3D, friend: int) -> void:
+	var q: Node3D = players_root.get_node_or_null(str(friend))
+	if q == null or friend == id or not status.has(friend) or q.global_position.distance_to(p.global_position) > 3.0:
+		return
+	var ft: Dictionary = status[friend]
+	if (ft.get("question", {}) as Dictionary).is_empty() or elapsed < float(ft.get("vouched_until", -1.0)):
+		return
+	ft.vouched_until = float(ft.question.until) + 0.5
+	status[id].sus = minf(99.0, float(status[id].sus) + 30.0)
+	_fx_all("shout", p.global_position, "%d|%s" % [id, ["They're with me!", "It's true, I saw it!", "Sir, ma'am, I can explain!"][_rng.randi() % 3]])
+	_tell(friend, "%s is vouching for you! Your excuse just got better." % _name(id), Color("7fe0a0"))
+	_moment("vouch", id, friend)
+
+
+func _near_kind(pos: Vector3, kind: String, radius: float) -> bool:
+	for it: Dictionary in campus.interactables:
+		if it.kind == kind and (it.pos as Vector3).distance_to(pos) < radius:
+			return true
+	return false
+
+
+# --- Detention rescue: friends outside can get you out early -----------------------------------------
+
+const BAIL_PRICE := 40
+const OFFICE_COOLDOWN := 60.0
+
+
+## Out of detention early (a friend's doing, or the fire alarm).
+func _release(id: int, why: String) -> void:
+	var st: Dictionary = status.get(id, {})
+	if st.is_empty() or st.state != "detention":
+		return
+	st.timer = 0.0  # _update_player lets them out this tick, with the walk-back grace
+	_tell(id, why, Color("7fe0a0"))
+
+
+## Help Out: ring the principal's office. They step out to take the call: half the
+## time left for everyone in detention.
+func _on_call_office(id: int, to: int) -> void:
+	if not status.has(to) or status[to].state != "detention":
+		_tell(id, "Nobody's in detention right now.", Color("ffb37a"))
+		return
+	if not _cooldown(id, "office", OFFICE_COOLDOWN):
+		_tell(id, "The office stopped picking up. Try again in a bit.", Color("ffb37a"))
+		return
+	for other in status:
+		if status[other].state == "detention":
+			status[other].timer = maxf(2.0, float(status[other].timer) * 0.5)
+			_tell(other, "The principal went to take a phone call (%s). Half your detention's gone!" % _name(id), Color("7fe0a0"))
+	status[id].assists = int(status[id].assists) + 1
+	_tell(id, "You called the principal's office. Detention halved! +%d" % ASSIST_POINTS, Color("7fe0a0"))
+	_stat(id, "rescues")
+	_moment("rescue", id, to)
+	_moment("rescued", to, id)
+
+
+# --- The prefect doesn't chase: she runs off to tell your teacher --------------------------------------
+
+const REPORT_TIME := 9.0
+
+
+func _start_report(b: Dictionary, id: int) -> void:
+	if b.has("report_on"):
+		return
+	var teacher := _brain_of_room(current_room(id))
+	var who: String = str(teacher.npc.display_name) if not teacher.is_empty() else "the principal"
+	b.report_on = id
+	b.report_until = elapsed + REPORT_TIME
+	b.npc.say("I'm TELLING %s!" % who.to_upper(), 3.0)
+	b.npc.alert = 2
+	if not teacher.is_empty():
+		b.npc.go_to(_path(b.npc.global_position, teacher.npc.global_position), 3.6)
+	_tell(id, "%s is running to tell %s! Stop her (shove) or get back to class!" % [b.npc.display_name.get_slice(" (", 0), who], Color("ff9a4a"))
+	_moment("reported", id)
+
+
+func _stop_report(b: Dictionary) -> void:
+	var id: int = int(b.report_on)
+	b.erase("report_on")
+	b.npc.alert = 0
+	b.npc.say("Ow! FINE. I didn't see anything.", 2.5)
+	b.state = "return"
+	_resume(b)
+	if status.has(id):
+		_tell(id, "Report stopped. She won't be telling anyone.", Color("7fe0a0"))
+
+
+func _report_step(b: Dictionary) -> void:
+	if not b.has("report_on") or elapsed < float(b.report_until):
+		return
+	var id: int = int(b.report_on)
+	b.erase("report_on")
+	b.npc.alert = 0
+	b.state = "return"
+	_resume(b)
+	if not status.has(id) or status[id].state != "class":
+		return
+	var st: Dictionary = status[id]
+	st.strikes = mini(3, int(st.strikes) + 1)
+	st.sus = 90.0
+	b.npc.say("There. I told on you. Enjoy detention!", 2.5)
+	_log("%s told on %s!" % [b.npc.display_name.get_slice(" (", 0), _name(id)])
+	_call_help(id, players_root.get_node(str(id)).global_position, b.npc.display_name)
 
 
 func _teleport(id: int, pos: Vector3, yaw: float) -> void:

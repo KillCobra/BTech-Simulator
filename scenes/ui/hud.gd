@@ -289,6 +289,11 @@ var _dev_shop := false
 var _mic: Label
 var _shout: PanelContainer
 var _shout_until := 0.0
+# Being questioned: pick an excuse with 1-4 before the time runs out.
+var _question: PanelContainer
+var _question_col: VBoxContainer
+var _question_sig := ""
+var _question_bar: ColorRect
 
 
 func _ready() -> void:
@@ -889,7 +894,7 @@ func _section(text: String) -> Label:
 
 
 func _input(event: InputEvent) -> void:
-	if _shout_input(event):
+	if _question_input(event) or _shout_input(event):
 		get_viewport().set_input_as_handled()
 		return
 	if _essay != null and _essay.visible and event.is_action_pressed("ui_cancel"):
@@ -1309,6 +1314,77 @@ func close_questions() -> void:
 	_ask.visible = false
 	if should_capture():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+# --- Excuses -----------------------------------------------------------------------------------
+
+## Grabbed and questioned: the staff member's question, your excuses [1]-[4], a timer.
+func _refresh_question(director: Node, st: Dictionary) -> void:
+	var q: Dictionary = st.get("question", {})
+	var left: float = float(q.get("until", 0.0)) - float(director.elapsed)
+	if q.is_empty() or left <= 0.0 or director.round_over:
+		if _question:
+			_question.visible = false
+		_question_sig = ""
+		return
+	if _question == null:
+		_question = PanelContainer.new()
+		_question.add_theme_stylebox_override("panel", _card(Color(0.1, 0.05, 0.05, 0.94), 16, 16))
+		_question.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		_question.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_question.grow_vertical = Control.GROW_DIRECTION_BOTH
+		_question.position.y += 120
+		_question.custom_minimum_size = Vector2(620, 0)
+		_question.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_frame.add_child(_question)
+		_question_col = VBoxContainer.new()
+		_question_col.add_theme_constant_override("separation", 6)
+		_question.add_child(_question_col)
+	var sig := str(q.get("texts", [])) + str(q.get("until", 0))
+	if sig != _question_sig:
+		_question_sig = sig
+		for c in _question_col.get_children():
+			_question_col.remove_child(c)
+			c.queue_free()
+		var head := _outlined("%s STOPPED YOU!  Talk your way out:" % str(q.get("who", "Staff")).to_upper(), 22)
+		head.add_theme_color_override("font_color", Color("ff9a7a"))
+		_question_col.add_child(head)
+		var texts: Array = q.get("texts", [])
+		var ids: Array = q.get("ids", [])
+		for k in texts.size():
+			var l := _outlined("[%d]  %s" % [k + 1, texts[k]], 19)
+			var kind: String = ids[k] if k < ids.size() else ""
+			l.add_theme_color_override("font_color", Color("ff6a8a") if kind == "snitch" else (Color("7fe0a0") if kind in ["pass", "note", "book"] else Color.WHITE))
+			_question_col.add_child(l)
+		var tip := Label.new()
+		tip.text = "Proof in your pocket works best. Same excuse twice never works.   Click: shove and RUN"
+		tip.add_theme_font_size_override("font_size", 12)
+		tip.modulate = Color(1, 1, 1, 0.6)
+		_question_col.add_child(tip)
+		var bar_bg := ColorRect.new()
+		bar_bg.color = Color(1, 1, 1, 0.12)
+		bar_bg.custom_minimum_size = Vector2(588, 8)
+		_question_col.add_child(bar_bg)
+		_question_bar = ColorRect.new()
+		_question_bar.color = Color("ff6a5a")
+		_question_bar.size = Vector2(588, 8)
+		bar_bg.add_child(_question_bar)
+	_question.visible = true
+	if _question_bar:
+		_question_bar.size.x = 588.0 * clampf(left / 4.0, 0.0, 1.0)
+
+
+func _question_input(event: InputEvent) -> bool:
+	if _question == null or not _question.visible or not (event is InputEventKey) or not event.pressed or event.echo:
+		return false
+	var k: int = event.physical_keycode - KEY_1
+	if k < 0 or k > 3:
+		return false
+	var director: Node = get_parent().get_node_or_null("Director")
+	if director:
+		director.request.rpc_id(1, "excuse", {"k": k})
+	_question.visible = false
+	return true
 
 
 # --- Voice --------------------------------------------------------------------------------------
@@ -1749,6 +1825,8 @@ func _app_help(director: Node, me_node: Node, st: Dictionary) -> void:
 					line = "%s · in class" % Network.CLASSROOMS[room]
 		_phone_text("\n%s" % who, 16, Color("7fd0ea"))
 		_phone_text(line, 12, Color("ff6a6a") if ft.state == "chased" else Color(1, 1, 1, 0.75))
+		if str(ft.state) == "detention":
+			_phone_body.add_child(_phone_button("Call the principal's office (halves it)", func(): director.request.rpc_id(1, "call_office", {"to": id}), Color("ff9a4a")))
 		var inside: bool = str(ft.state) in ["class", "chased"]
 		if not inside:
 			continue
@@ -2050,6 +2128,11 @@ func _refresh_shop(director: Node, me: Node, st: Dictionary, delta: float) -> vo
 		var price: int = director.SHOP[key]
 		_shop_row(str(director.ITEMS[key]), str(director.SHOP_ABOUT[key]), "Rs %d" % price, cash >= price,
 			func(): director.request.rpc_id(1, "buy", {"what": key}), ITEM_COLORS.get(key, Color("ffd24a")))
+	for pid in director.status:
+		if int(pid) != multiplayer.get_unique_id() and str(director.status[pid].get("state", "")) == "detention":
+			var who := str(Network.players.get(int(pid), {}).get("name", "Friend"))
+			_shop_row("Samosas for the principal", "Frees %s from detention (wink wink)" % who, "Rs %d" % director.BAIL_PRICE,
+				cash >= director.BAIL_PRICE, func(): director.request.rpc_id(1, "buy", {"what": "bail:%d" % int(pid)}), Color("e0a050"))
 	var ups: Dictionary = st.get("upgrades", {})
 	var head := Label.new()
 	head.text = "UPGRADES (last all round)"
@@ -2328,6 +2411,7 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 		close_questions()
 	_refresh_phone(director, me, st, delta)
 	_refresh_mic(st)
+	_refresh_question(director, st)
 	_update_route(director, me, st)
 	_update_warning(cam, st, delta)
 	var heat := int(director.world.get("heat", 1))
@@ -2378,12 +2462,14 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 	_objective.visible = st.state == "class"
 	match st.state:
 		"chased":
-			if st.get("grabbed", false):
+			if not (st.get("question", {}) as Dictionary).is_empty():
+				_banner.visible = false  # the excuse picker says it all
+			elif st.get("grabbed", false):
 				_show_banner("GRABBED!  CLICK TO SHOVE FREE!", Color("ff2a2a"))
 			else:
 				_show_banner("RUN!  You've been spotted!   (Click: shove if they get close)", Color("ff4a4a"))
 		"detention":
-			_show_banner("DETENTION   %s\nType your lines to get out sooner (-5s each)" % _clock(st.timer), Color("f2a93b"))
+			_show_banner("DETENTION   %s\nType your lines (-5 s each). Friends can free you: fire alarm, Uncle's samosa bribe, a paper ball through the window, a call to the office." % _clock(st.timer), Color("f2a93b"))
 		"escaped":
 			if now - float(st.time) < 8.0:
 				_show_banner("YOU ESCAPED THE UNIVERSITY!   %s
