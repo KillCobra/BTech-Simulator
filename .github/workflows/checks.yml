@@ -60,7 +60,7 @@ jobs:
       - name: Smoke test the chaos (excuses, bucket, extinguisher, trolley; Grand Campus, a first round)
         run: |
           timeout 150 "$GODOT" --headless --path . -- --host --autostart=1 --minutes=5 --speed=5 --name=CI --map=1 --rounds=0 --quit-at-end \
-            --question=8 "--walk=!wait3;!stand;!wait5.5;!excuse0;!wait3;!goto:bucket;!interact;!goto:extinguisher;!interact;!use1;!goto:trolley;!interact;!wait1;!interact;!wait300" 2>&1 | tee chaos.log || true
+            --question=25 "--walk=!wait3;!stand;!goto:bucket;!interact;!goto:extinguisher;!interact;!use1;!goto:trolley;!interact;!wait1;!interact;!wait25;!excuse0;!wait300" 2>&1 | tee chaos.log || true
           grep -q "The final bell rang" chaos.log || { echo "::error::The chaos round never reached the final bell"; exit 1; }
           grep -q "questions CI" chaos.log || { echo "::error::Nobody questioned the bot"; exit 1; }
           grep -q "set off a fire extinguisher" chaos.log || { echo "::error::The extinguisher never went off"; exit 1; }

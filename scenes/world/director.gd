@@ -211,7 +211,12 @@ func start(seats: Dictionary, minutes: float) -> void:
 		if arg.begins_with("--question="):  # dev: the nearest staff grabs and questions the host after N s
 			get_tree().create_timer(float(arg.trim_prefix("--question="))).timeout.connect(func():
 				var me: Node3D = players_root.get_node_or_null("1")
-				var b := _nearest_brain(me.global_position, 999.0, ["teacher", "patrol", "gate"]) if me else {}
+				var b := {}
+				var best := INF
+				for o in _brains:
+					if me and o.role in ["teacher", "patrol", "gate"] and not o.has("leash") and o.npc.global_position.distance_to(me.global_position) < best:
+						best = o.npc.global_position.distance_to(me.global_position)
+						b = o
 				if not b.is_empty():
 					_start_chase(b, 1, me.global_position)
 					b.npc.global_position = me.global_position + Vector3(0.8, 0, 0)
@@ -3068,7 +3073,9 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 	if spotted != -1:
 		npc.alert = 1
 		if spotted_sus >= 100.0 and status[spotted].state != "chased":
-			if b.chaser:
+			if b.chaser and elapsed < float(b.get("gave_up_until", -1.0)):
+				pass  # just gave up on a chase: glare, don't run again
+			elif b.chaser:
 				_start_chase(b, spotted, players[spotted].global_position)
 			elif b.get("tells", false):
 				_start_report(b, spotted)
@@ -3481,6 +3488,7 @@ func _chase_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		# Mr. Tanaka doesn't do corridors.
 		npc.say("Hmph. Not worth leaving my class for. I KNOW your face, %s." % _name(id), 3.0)
 		st.sus = 70.0
+		b.gave_up_until = elapsed + 10.0  # walks back to his board; no second chase on the way
 		_end_chase(b)
 		return
 	var seen := _can_see(npc, p, b.range * 1.4, 200.0)
