@@ -12,6 +12,7 @@ const TrolleyScript := preload("res://scenes/props/trolley.gd")
 const Hud := preload("res://scenes/ui/hud.gd")
 const P := preload("res://scripts/palette.gd")
 const Voxel := preload("res://scripts/voxel.gd")
+const StudentModel := preload("res://scenes/player/student_model.gd")
 
 var preview := false
 var preview_map := -1  # lobby: show this map from the air (-1 = the menu's close-up of the academic block)
@@ -117,6 +118,7 @@ func _process(delta: float) -> void:
 	if _fixed_cam:
 		_fixed_cam.current = true
 	var me := _players_root.get_node_or_null(str(multiplayer.get_unique_id()))
+	_step_replay(delta)
 	_hud.refresh(_director, me, get_viewport().get_camera_3d(), _npcs_root, _players_root)
 	_update_rain()
 	_update_props()
@@ -514,6 +516,162 @@ func _drop_paper_ball(pos: Vector3) -> void:
 	tween.tween_property(ball, "position:y", pos.y + 0.06, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tween.tween_interval(6.0)
 	tween.tween_callback(ball.queue_free)
+
+
+# --- CCTV replay: the round's best moment, played back with puppets --------------------------------
+
+signal replay_finished
+var replaying := false
+var _replay: Dictionary = {}
+var _replay_t := 0.0
+var _replay_root: Node3D
+var _replay_cam: Camera3D
+var _replay_puppets := {}   # key -> StudentModel
+var _replay_prev_cam: Camera3D
+var _replay_next_event := 0
+var _replay_bubbles := {}  # key -> [Label3D, seconds left]
+
+
+## Plays the Director's `replay` clip from a CCTV-style camera. Everyone's real body is
+## hidden meanwhile; blocky stand-ins act the moment out.
+func play_replay(clip: Dictionary) -> void:
+	if clip.is_empty() or (clip.get("frames", []) as Array).is_empty():
+		replay_finished.emit()
+		return
+	stop_replay()
+	_replay = clip
+	_replay_t = float((clip.frames as Array)[0][0])
+	_replay_next_event = 0
+	_replay_bubbles.clear()
+	replaying = true
+	_replay_root = Node3D.new()
+	_replay_root.name = "Replay"
+	add_child(_replay_root)
+	var looks: Dictionary = clip.get("looks", {})
+	for key in clip.keys:
+		if not looks.has(key):
+			continue
+		var m: Node3D = StudentModel.new()
+		m.build(looks[key])
+		_replay_root.add_child(m)
+		_replay_puppets[key] = m
+		var bubble := Label3D.new()
+		bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		bubble.font_size = 34
+		bubble.outline_size = 12
+		bubble.no_depth_test = true
+		bubble.position.y = 2.25
+		m.add_child(bubble)
+		_replay_bubbles[key] = [bubble, 0.0]
+	_players_root.visible = false
+	_npcs_root.visible = false
+	var focus: Vector3 = clip.focus
+	_replay_prev_cam = get_viewport().get_camera_3d()
+	_replay_cam = Camera3D.new()
+	_replay_cam.fov = 62.0
+	add_child(_replay_cam)
+	_replay_cam.global_transform = _cctv_spot(focus)
+	_replay_cam.current = true
+
+
+
+## High in a corner, looking down at `focus`, like a real camera (not through a wall).
+func _cctv_spot(focus: Vector3) -> Transform3D:
+	var eye := focus + Vector3(0, 1.2, 0)
+	var space := get_world_3d().direct_space_state
+	var best := eye + Vector3(4, 2.6, 4)
+	var best_room := -1.0
+	for k in 8:
+		var a := k * TAU / 8.0 + 0.4
+		var at := eye + Vector3(cos(a) * 5.0, 2.4, sin(a) * 5.0)
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, at, 1))
+		var room := 1.0 if hit.is_empty() else eye.distance_to(hit.position) / eye.distance_to(at)
+		if room > best_room:
+			best_room = room
+			best = at if hit.is_empty() else eye.lerp(hit.position, 0.85)
+		if room > 0.99:
+			break
+	return Transform3D(Basis(), best).looking_at(focus + Vector3(0, 0.6, 0), Vector3.UP)
+
+
+func stop_replay() -> void:
+	if not replaying:
+		return
+	replaying = false
+	if is_instance_valid(_replay_root):
+		_replay_root.queue_free()
+	if is_instance_valid(_replay_cam):
+		_replay_cam.queue_free()
+	_replay_puppets.clear()
+	_players_root.visible = true
+	_npcs_root.visible = true
+	if is_instance_valid(_replay_prev_cam):
+		_replay_prev_cam.current = true
+	replay_finished.emit()
+
+
+func _step_replay(delta: float) -> void:
+	if not replaying:
+		return
+	_replay_t += delta * 0.85  # a touch of slow motion
+	var frames: Array = _replay.frames
+	var last: PackedFloat32Array = frames[frames.size() - 1]
+	if _replay_t > last[0] + 0.6:
+		stop_replay()
+		return
+	# What happened (and what was said) at this point of the clip.
+	var events: Array = _replay.get("events", [])
+	while _replay_next_event < events.size() and float(events[_replay_next_event].t) <= _replay_t:
+		var ev: Dictionary = events[_replay_next_event]
+		_replay_next_event += 1
+		if ev.has("say") and _replay_bubbles.has(str(ev.say)):
+			var b: Array = _replay_bubbles[str(ev.say)]
+			(b[0] as Label3D).text = str(ev.text)
+			b[1] = 2.6
+		elif ev.has("fx"):
+			if str(ev.fx) == "shout":
+				var parts := str(ev.extra).split("|", true, 1)
+				var key := "p" + parts[0]
+				if parts.size() > 1 and _replay_bubbles.has(key):
+					(_replay_bubbles[key][0] as Label3D).text = parts[1]
+					_replay_bubbles[key][1] = 2.2
+			else:
+				_on_effect(str(ev.fx), ev.pos, str(ev.extra))
+	for key in _replay_bubbles:
+		var b: Array = _replay_bubbles[key]
+		b[1] = maxf(0.0, float(b[1]) - delta)
+		(b[0] as Label3D).visible = float(b[1]) > 0.0
+	var i := 0
+	while i < frames.size() - 2 and float(frames[i + 1][0]) < _replay_t:
+		i += 1
+	var a: PackedFloat32Array = frames[i]
+	var b: PackedFloat32Array = frames[mini(i + 1, frames.size() - 1)]
+	var span := maxf(b[0] - a[0], 0.001)
+	var k := clampf((_replay_t - a[0]) / span, 0.0, 1.0)
+	var keys: Array = _replay.keys
+	for n in keys.size():
+		var key: String = keys[n]
+		var m: Node3D = _replay_puppets.get(key)
+		if m == null:
+			continue
+		var o := 1 + n * 5
+		if a[o + 1] < -900.0 or b[o + 1] < -900.0:
+			m.visible = false
+			continue
+		var pa := Vector3(a[o], a[o + 1], a[o + 2])
+		var pb := Vector3(b[o], b[o + 1], b[o + 2])
+		var flags := int(b[o + 4])
+		m.visible = flags & 4 == 0  # hidden in a locker
+		var pos := pa.lerp(pb, k)
+		var yaw := lerp_angle(a[o + 3], b[o + 3], k)
+		var down := flags & 2 != 0
+		m.global_transform = Transform3D(Basis.from_euler(Vector3(-1.35 if down else 0.0, yaw, 0)), pos)
+		var speed := Vector2(pb.x - pa.x, pb.z - pa.z).length() / span
+		m.animate(delta, 0.0 if down else speed, flags & 1 != 0, speed > 4.5, 0.0, flags & 8 != 0)
+		if key == str(_replay.get("subject", "")) and m.visible and is_instance_valid(_replay_cam):
+			# The camera pans to keep the star of the clip in shot, like a real CCTV.
+			var look := _replay_cam.global_transform.looking_at(pos + Vector3(0, 0.9, 0), Vector3.UP)
+			_replay_cam.global_transform = _replay_cam.global_transform.interpolate_with(look, minf(1.0, delta * 3.0))
 
 
 ## Dev: "--cam=x,y,z,tx,ty,tz" pins a camera at a spot looking at a target (for screenshots).

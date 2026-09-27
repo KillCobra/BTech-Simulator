@@ -121,6 +121,8 @@ var elapsed := 0.0
 var round_time := 480.0
 var round_over := false
 var results := []
+var awards := []   # end of round: [{"title", "name", "line"}] (see _awards)
+var replay := {}   # end of round: the best CCTV clip of the round (see _clip_*)
 
 signal toasted(text: String, color: Color)
 signal effect(kind: String, pos: Vector3, extra: String)
@@ -165,7 +167,7 @@ func _ready() -> void:
 	big.name = "Sync"
 	big.delta_interval = 0.1
 	var config := SceneReplicationConfig.new()
-	for prop in [".:status", ".:rooms", ".:feed", ".:marks", ".:results"]:
+	for prop in [".:status", ".:rooms", ".:feed", ".:marks", ".:results", ".:awards", ".:replay"]:
 		config.add_property(NodePath(prop))
 		config.property_set_replication_mode(NodePath(prop), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
 	big.replication_config = config
@@ -399,6 +401,7 @@ func _add_npc(data: Dictionary, brain: Dictionary) -> Dictionary:
 	brain.t = _rng.randf() * 10.0
 	brain.distracted_until = -1.0
 	brain.lost = 0.0
+	brain.look = data.look  # for the end-of-round replay
 	_brains.append(brain)
 	return brain
 
@@ -559,6 +562,7 @@ func _new_status(id: int) -> Dictionary:
 ## Something happened to `id` (with `other` involved, a peer id or -1).
 func _moment(kind: String, id: int, other := -1) -> void:
 	_moments.append({"t": elapsed, "id": id, "kind": kind, "other": other})
+	_clip_moment(kind, id, other)
 
 
 ## Adds `by` to one of `id`'s award counters (see _awards). "max:" keys keep the biggest value.
@@ -658,6 +662,8 @@ func _tell(id: int, text: String, color := Color.WHITE) -> void:
 
 func _fx_all(kind: String, pos: Vector3, extra: String) -> void:
 	_fx.rpc(kind, pos, extra)
+	if kind in CLIP_FX:
+		_clip_events.append({"t": elapsed, "fx": kind, "pos": pos, "extra": extra})
 
 
 func _cooldown(id: int, action: String, seconds: float) -> bool:
@@ -2322,6 +2328,176 @@ func _on_call(id: int, to: int) -> void:
 	_moment("call", id, to)
 
 
+# --- End of round: the class CCTV archive ------------------------------------------------------------
+
+## The round's awards, from everyone's counters: [{"title", "name", "line"}], best first.
+func _awards(rows: Array) -> Array:
+	var stat := func(row: Dictionary, key: String) -> float:
+		return float((_stats.get(str(row.name), {}) as Dictionary).get(key, 0.0))
+	var best := func(score: Callable) -> Dictionary:
+		var pick := {}
+		var top := 0.0
+		for row: Dictionary in rows:
+			var v: float = score.call(row)
+			if v > top:
+				top = v
+				pick = row
+		return {"row": pick, "v": top}
+	var out := []
+	var add := func(title: String, found: Dictionary, line: String) -> void:
+		if not (found.row as Dictionary).is_empty():
+			out.append({"title": title, "name": str(found.row.name), "line": line % found.v})
+	add.call("CLOSEST CALL", best.call(func(r): return stat.call(r, "max:close")), "hit %d%% suspicion and walked away")
+	add.call("BIGGEST SNITCH", best.call(func(r): return stat.call(r, "snitched")), "blamed a friend %d time(s)")
+	add.call("MOST WANTED", best.call(func(r): return stat.call(r, "max:chase")), "chased for %d seconds straight")
+	add.call("CHAOS AGENT", best.call(func(r): return stat.call(r, "dominoes") + stat.call(r, "trolley_hits") + stat.call(r, "ball_hits") + stat.call(r, "slips")),
+		"flattened staff %d time(s)")
+	add.call("LOUDEST", best.call(func(r): return stat.call(r, "heard")), "heard by the staff %d time(s)")
+	add.call("SMOOTH TALKER", best.call(func(r): return stat.call(r, "excuses")), "talked their way out %d time(s)")
+	add.call("ACADEMIC WEAPON", best.call(func(r): return float(r.get("tests", 0))), "%d test points")
+	add.call("GUARDIAN ANGEL", best.call(func(r): return stat.call(r, "rescues") + float(r.get("assists", 0))), "helped friends %d time(s)")
+	add.call("MOST BETRAYED", best.call(func(r): return stat.call(r, "snitched_on")), "blamed by friends %d time(s)")
+	add.call("STUNT DOUBLE", best.call(func(r): return stat.call(r, "tumbles")), "fell over %d time(s)")
+	add.call("SAMOSA ENTHUSIAST", best.call(func(r): return stat.call(r, "samosas")), "%d samosa(s) eaten, bribed or thrown")
+	var periods := maxi(1, int(world.periods))
+	var skipper: Dictionary = best.call(func(r): return 100.0 - 100.0 * minf(1.0, stat.call(r, "present") / periods) if not bool(r.escaped) else 0.0)
+	if float(skipper.v) >= 50.0:
+		out.append({"title": "WORST ATTENDANCE", "name": str(skipper.row.name), "line": "attended %d%% of classes" % int(100.0 - float(skipper.v))})
+	add.call("DETENTION REGULAR", best.call(func(r): return float(r.get("caught", 0))), "caught %d time(s)")
+	return out.slice(0, 6)
+
+
+# Replay: the host keeps the last few seconds of everyone's movement (10 times a
+# second) and, whenever something clip-worthy happens, saves a clip around it. The
+# best clip of the round plays on everyone's screen at the final bell.
+const CLIP_WEIGHTS := {"snitch": 6, "domino": 6, "trolley": 6, "slip_trap": 5, "ball_hit": 5, "caught": 4, "spray": 4,
+	"samosa_throw": 4, "samosa_splat": 4, "excuse_ok": 4, "close_call": 3, "shoved_friend": 3, "hold_door": 3, "lecture": 2}
+const CLIP_TITLES := {"snitch": "%s SELLS OUT A FRIEND", "domino": "DOMINO!", "trolley": "THE TROLLEY OF DOOM", "slip_trap": "WET FLOOR STRIKES",
+	"ball_hit": "NOTHING BUT FACE", "caught": "%s GETS CAUGHT", "spray": "THE EXTINGUISHER INCIDENT", "samosa_throw": "SAMOSA DIPLOMACY",
+	"samosa_splat": "SAMOSA TO THE FACE", "excuse_ok": "THE EXCUSE THAT WORKED", "close_call": "THE CLOSEST CALL",
+	"shoved_friend": "FRIENDLY FIRE", "hold_door": "LOCKED IN", "lecture": "THE LECTURE"}
+const CLIP_BEFORE := 5.0
+const CLIP_AFTER := 3.0
+var _frames: Array = []       # [{"t", "e": {key: [x, y, z, yaw, flags]}}]
+var _clip_events: Array = []  # [{"t", "fx": kind, "pos", "extra"}] or [{"t", "say": key, "text"}]
+var _said := {}               # npc name -> what they were last saying (to spot new lines)
+const CLIP_FX := ["spray", "books", "tumble", "samosa_arc", "splash", "whistle", "shout"]
+var _frame_t := 0.0
+var _clip_due: Array = []     # [{"at", "kind", "id", "other", "t", "focus", "w"}]
+var _best_clip := {}
+
+
+func _clip_record(players: Dictionary) -> void:
+	if elapsed < _frame_t:
+		return
+	_frame_t = elapsed + 0.1
+	var e := {}
+	for id in players:
+		var p: Node3D = players[id]
+		var flags := (1 if p.crouching else 0) | (2 if p.tumbling else 0) | (4 if p.hidden else 0) | (8 if p.seated else 0)
+		var pos := p.global_position
+		e["p%d" % int(id)] = [pos.x, pos.y, pos.z, p.rotation.y, flags]
+	for b in _brains:
+		var npc: Node3D = b.npc
+		if not is_instance_valid(npc):
+			continue
+		var pos := npc.global_position
+		e[str(npc.name)] = [pos.x, pos.y, pos.z, npc.rotation.y, (2 if npc.stunned else 0) | (8 if npc.pose == 1 else 0) | (16 if npc.alert == 2 else 0)]
+		var line := str(npc.speech)
+		if line != str(_said.get(npc.name, "")):
+			_said[npc.name] = line
+			if line != "":
+				_clip_events.append({"t": elapsed, "say": str(npc.name), "text": line})
+	_frames.append({"t": elapsed, "e": e})
+	while not _frames.is_empty() and float(_frames[0].t) < elapsed - CLIP_BEFORE - CLIP_AFTER - 1.0:
+		_frames.pop_front()
+	while not _clip_events.is_empty() and float(_clip_events[0].t) < elapsed - CLIP_BEFORE - CLIP_AFTER - 1.0:
+		_clip_events.pop_front()
+	for k in range(_clip_due.size() - 1, -1, -1):
+		if elapsed >= float(_clip_due[k].at):
+			_clip_save(_clip_due[k])
+			_clip_due.remove_at(k)
+
+
+func _clip_moment(kind: String, id: int, other: int) -> void:
+	if not CLIP_WEIGHTS.has(kind) or round_over:
+		return
+	var w := int(CLIP_WEIGHTS[kind])
+	if w < int(_best_clip.get("w", 0)) or (w == int(_best_clip.get("w", 0)) and elapsed - float(_best_clip.get("t", 0.0)) < 30.0):
+		return  # we already have a better (or as good and recent) one
+	var p: Node3D = players_root.get_node_or_null(str(id))
+	if p == null:
+		return
+	var title := str(CLIP_TITLES[kind])
+	if "%s" in title:
+		title = title % _name(id).to_upper()
+	_clip_due.append({"at": elapsed + CLIP_AFTER, "kind": kind, "id": id, "other": other, "t": elapsed, "focus": p.global_position, "w": w, "title": title})
+
+
+## Keep the frames around a moment: only who was within 22 m of it.
+func _clip_save(due: Dictionary) -> void:
+	var focus: Vector3 = due.focus
+	var keys := {}
+	var frames := []
+	for f: Dictionary in _frames:
+		if float(f.t) < float(due.t) - CLIP_BEFORE:
+			continue
+		frames.append(f)
+		for key in f.e:
+			var v: Array = f.e[key]
+			if Vector3(v[0], v[1], v[2]).distance_to(focus) < 22.0:
+				keys[key] = true
+	if frames.size() < 10:
+		return
+	var order: Array = keys.keys()
+	var packed := []
+	for f: Dictionary in frames:
+		var row := PackedFloat32Array()
+		row.append(float(f.t) - float(due.t))
+		for key in order:
+			var v: Array = f.e.get(key, [])
+			if v.is_empty():
+				row.append_array(PackedFloat32Array([0, -999, 0, 0, 0]))
+			else:
+				row.append_array(PackedFloat32Array([v[0], v[1], v[2], v[3], v[4]]))
+		packed.append(row)
+	var events := []
+	for ev: Dictionary in _clip_events:
+		if float(ev.t) >= float(due.t) - CLIP_BEFORE and (not ev.has("say") or keys.has(ev.say)) 				and (not ev.has("pos") or (ev.pos as Vector3).distance_to(focus) < 25.0):
+			var copy := ev.duplicate()
+			copy.t = float(ev.t) - float(due.t)
+			events.append(copy)
+	_best_clip = {"w": due.w, "t": due.t, "title": due.title, "focus": focus, "keys": order, "frames": packed,
+		"when": elapsed, "kind": due.kind, "subject": "p%d" % int(due.id), "events": events}
+
+
+## The clip to show at the final bell, with what everyone in it looks like.
+func _clip_final() -> Dictionary:
+	for due: Dictionary in _clip_due:
+		_clip_save(due)  # something happened in the last seconds: keep it anyway
+	_clip_due.clear()
+	if _best_clip.is_empty():
+		return {}
+	var looks := {}
+	var names := {}
+	for key: String in _best_clip.keys:
+		if key.begins_with("p"):
+			var id := int(key.substr(1))
+			var info: Dictionary = Network.players.get(id, {})
+			looks[key] = P.apply_prefs(P.make_look(id, int(info.get("classroom", 0))), info.get("look", {}))
+			names[key] = str(info.get("name", ""))
+		else:
+			var b := _brain_by_name(key)
+			if not b.is_empty():
+				looks[key] = b.look
+				names[key] = str(b.npc.display_name).get_slice(" (", 0)
+	var out: Dictionary = _best_clip.duplicate()
+	out.looks = looks
+	out.names = names
+	print("[replay] %s: %d frames, %d people" % [out.title, (out.frames as Array).size(), (out.keys as Array).size()])
+	return out
+
+
 # --- Main loop -------------------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
@@ -2387,6 +2563,7 @@ func _physics_process(delta: float) -> void:
 	_update_balls()
 	_uncle_chatter(players)
 	_pa_step()
+	_clip_record(players)
 	_coin_step(players)
 	_voice_step(delta)
 	_chaos_step(players, delta)
@@ -2600,13 +2777,16 @@ func _style_step(id: int, p: Node3D, st: Dictionary, delta: float) -> void:
 		st.calm_t = 0.0
 		if float(st.sus) >= 80.0 and st.state == "class":
 			st.peak = true
+			st.peak_sus = maxf(float(st.get("peak_sus", 0.0)), float(st.sus))
 	elif st.peak:
 		st.calm_t = float(st.calm_t) + delta
 		if st.calm_t >= 1.5:
 			st.peak = false
 			if st.state == "class":
 				_style(id, "close_call")
+				_stat(id, "max:close", float(st.get("peak_sus", 80.0)))
 				_moment("close_call", id)
+			st.peak_sus = 0.0
 	var out: bool = st.state == "class" and campus.room_of(pos) != current_room(id) and elapsed > float(world.passing_until) \
 			and elapsed > float(st.pass_until)
 	if out and not st.seen and not p.hidden:
@@ -2734,6 +2914,8 @@ func _end_round() -> void:
 	for b in _brains:
 		b.npc.stop(b.npc.rotation.y)
 		b.npc.alert = 0
+	awards = _awards(list)
+	replay = _clip_final()
 	_fx_all("bell", Vector3.ZERO, "end")
 	_log("The final bell rang!")
 	_report_moments()
@@ -3049,6 +3231,7 @@ func _attendance_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		rooms[b.room].called.append(id)
 		if b.get("proxied", false):
 			npc.say("...Present!  (Hmm, you sound different.)", 1.8)
+			_stat(id, "present")
 			_log("%s answered attendance for %s!" % [_name(b.proxied_by), _name(id)])
 			_moment("proxy", int(b.proxied_by), id)
 			_style(int(b.proxied_by), "proxy")
@@ -3079,6 +3262,7 @@ func _attendance_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 			and campus.room_of(players[next].global_position) == b.room
 	if present:
 		npc.say("%s?   ...Present!" % _name(next), 1.8)
+		_stat(next, "present")
 		rooms[b.room].called.append(next)
 		st.present_period = int(world.period)
 		_pay(next, 5, "for being present")

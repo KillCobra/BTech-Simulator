@@ -240,6 +240,11 @@ var _dot: ColorRect
 var _inv_row: Control
 var _keys_line: Control
 var _end_count := -1
+var _awards_box: HBoxContainer
+var _replay_btn: Button
+var _replay_overlay: Control
+var _replay_label: Label
+var _replay_shown := false
 var _style_cache := {}
 var _cash_label: Label
 var _slot_icons: Array[TextureRect] = []
@@ -713,6 +718,9 @@ func _build_end_screen() -> void:
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_theme_constant_override("separation", 14)
 	box.add_child(buttons)
+	_replay_btn = _end_button("WATCH THE REPLAY", Color("b07cff"), _start_replay)
+	_replay_btn.visible = false
+	buttons.add_child(_replay_btn)
 	if multiplayer.is_server():
 		buttons.add_child(_end_button("BACK TO LOBBY", Color("ffc93c"), Network.back_to_lobby))
 	else:
@@ -905,6 +913,9 @@ func _section(text: String) -> Label:
 
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F12:
+		_save_screenshot.call_deferred()
+		return
 	if _question_input(event) or _shout_input(event):
 		get_viewport().set_input_as_handled()
 		return
@@ -2477,6 +2488,17 @@ func _update_warning(cam: Camera3D, st: Dictionary, delta: float) -> void:
 		Sfx.play("blip", -8.0, 1.0 + k)
 
 
+## F12: the screen (results and all) saved as a PNG, ready to share.
+func _save_screenshot() -> void:
+	await RenderingServer.frame_post_draw
+	var dir := "user://screenshots"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var t := Time.get_datetime_dict_from_system()
+	var path := "%s/bunk-master-%04d%02d%02d-%02d%02d%02d.png" % [dir, t.year, t.month, t.day, t.hour, t.minute, t.second]
+	get_viewport().get_texture().get_image().save_png(path)
+	toast("Screenshot saved: %s" % ProjectSettings.globalize_path(path), Color("7fe0a0"))
+
+
 func toast(text: String, color := Color.WHITE) -> void:
 	_toast.text = text
 	_toast.add_theme_color_override("font_color", color)
@@ -2824,11 +2846,32 @@ func _show_results(results: Array) -> void:
 		var bonus := _outlined("THE WHOLE CLASS ESCAPED!  +50% for everyone", 20)
 		bonus.add_theme_color_override("font_color", Color("7fe0a0"))
 		_end_list.add_child(bonus)
+	var director: Node = get_parent().get_node_or_null("Director")
+	var list: Array = director.awards if director else []
+	if not list.is_empty():
+		var head := _outlined("CLASS CCTV ARCHIVE", 20)
+		head.add_theme_color_override("font_color", Color("ff9a7a"))
+		_end_list.add_child(head)
+		_awards_box = HBoxContainer.new()
+		_awards_box.add_theme_constant_override("separation", 8)
+		_end_list.add_child(_awards_box)
+		for a: Dictionary in list:
+			_awards_box.add_child(_award_card(a))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 30)
 	_end_list.add_child(row)
 	row.add_child(_results_progress(results))
 	row.add_child(_results_highlights(results))
+	var tip := Label.new()
+	tip.text = "[F12] save a screenshot of this screen"
+	tip.add_theme_font_size_override("font_size", 12)
+	tip.modulate = Color(1, 1, 1, 0.5)
+	_end_list.add_child(tip)
+	if director and not (director.replay as Dictionary).is_empty():
+		_replay_btn.visible = true
+		if not _replay_shown:
+			_replay_shown = true
+			_start_replay.call_deferred()
 	_end.visible = true
 	if is_instance_valid(_intro):
 		_intro.queue_free()
@@ -2848,6 +2891,82 @@ func _show_results(results: Array) -> void:
 		_exam.queue_free()
 		_exam = null
 	_frame.move_child(_end, _frame.get_child_count() - 1)
+
+
+## One award: "BIGGEST SNITCH / Aryan / blamed a friend 4 time(s)".
+func _award_card(a: Dictionary) -> Control:
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", _card(Color(1, 1, 1, 0.07), 10, 8))
+	card.custom_minimum_size = Vector2(136, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	card.add_child(col)
+	var t := Label.new()
+	t.text = str(a.title)
+	t.add_theme_font_size_override("font_size", 12)
+	t.add_theme_color_override("font_color", Color("ffb37a"))
+	col.add_child(t)
+	var n := Label.new()
+	n.text = str(a.name)
+	n.add_theme_font_size_override("font_size", 19)
+	n.add_theme_color_override("font_color", Color("ffd24a"))
+	n.clip_text = true
+	col.add_child(n)
+	var l := Label.new()
+	l.text = str(a.line)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.add_theme_font_size_override("font_size", 11)
+	l.modulate = Color(1, 1, 1, 0.75)
+	col.add_child(l)
+	return card
+
+
+## The round's best moment, from a CCTV camera. The results come back afterwards.
+func _start_replay() -> void:
+	var world := get_parent()
+	var director: Node = world.get_node_or_null("Director")
+	if director == null or (director.replay as Dictionary).is_empty() or world.replaying:
+		return
+	_end.visible = false
+	if _replay_overlay == null:
+		_replay_overlay = Control.new()
+		_replay_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_replay_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_replay_overlay)
+		var tint := ColorRect.new()
+		tint.color = Color(0.15, 0.22, 0.18, 0.3)
+		tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_replay_overlay.add_child(tint)
+		var bars := ColorRect.new()  # letterbox
+		bars.color = Color.BLACK
+		bars.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+		bars.offset_bottom = 70
+		_replay_overlay.add_child(bars)
+		var bottom := ColorRect.new()
+		bottom.color = Color.BLACK
+		bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+		bottom.offset_top = -70
+		_replay_overlay.add_child(bottom)
+		_replay_label = _outlined("", 30)
+		_replay_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+		_replay_label.offset_top = 16
+		_replay_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_replay_label.add_theme_color_override("font_color", Color("ff5a4a"))
+		_replay_overlay.add_child(_replay_label)
+		world.replay_finished.connect(func():
+			_replay_overlay.visible = false
+			_frame.visible = true
+			_markers.visible = true
+			_dot.visible = true
+			_end.visible = true)
+	var clip: Dictionary = director.replay
+	_replay_label.text = "●  CCTV ARCHIVE  ·  %s  ·  %s" % [str(clip.get("title", "")), _clock(float(clip.get("t", 0.0)))]
+	_replay_overlay.visible = true
+	_frame.visible = false  # nothing but the footage
+	_markers.visible = false
+	_dot.visible = false
+	world.play_replay(clip)
 
 
 ## Your progress this round (applied to the saved profile once): XP, stars, best time, Rs saved.
