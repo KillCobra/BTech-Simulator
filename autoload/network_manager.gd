@@ -37,8 +37,13 @@ var players := {}  # peer_id -> {"name": String, "classroom": int, "look": Dicti
 var local_info := {"name": "Student", "classroom": 0, "look": {}}
 var in_game := false
 var round_minutes := 8.0
-var map_choice := 0   # host's pick in the lobby: a map id, or -1 for random
+var map_choice := 0   # host's pick in the lobby: a map id, -1 random, -2 the daily challenge
 var current_map := 0  # the map this round is played on (same on every peer)
+const DAILY := -2
+const Rules := preload("res://scripts/rules.gd")
+var game_mode := "class"  # host's pick: "class" (escape together) or "race" (first out wins)
+## This round's rules, the same on every peer: {"mode", "event", "daily", "rule", "date"}.
+var round_rules := {"mode": "class", "event": "", "daily": false, "rule": ""}
 
 var loaded_peers: Array = []  # replicated: peers whose world is ready for replication
 
@@ -669,8 +674,47 @@ func _set_ready(value: bool) -> void:
 
 func start_game() -> void:
 	if multiplayer.is_server() and not in_game and all_ready():
-		current_map = map_choice if map_choice >= 0 else randi() % MAP_COUNT
-		_start.rpc(round_minutes, current_map)
+		var rules := {"mode": game_mode, "event": "", "daily": false, "rule": "", "date": 0}
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		if map_choice == DAILY:
+			var d := Rules.daily(Rules.today())
+			current_map = int(d.map)
+			rules.merge({"daily": true, "rule": d.rule, "event": d.event, "date": d.date}, true)
+		else:
+			current_map = map_choice if map_choice >= 0 else _random_open_map()
+			rules.event = Rules.random_event(rng)
+		for arg in OS.get_cmdline_user_args():  # dev: force a round event / mode / daily rule
+			if arg.begins_with("--event="):
+				rules.event = arg.trim_prefix("--event=").replace("none", "")
+			elif arg.begins_with("--mode="):
+				rules.mode = arg.trim_prefix("--mode=")
+			elif arg.begins_with("--rule="):
+				rules.rule = arg.trim_prefix("--rule=")
+		_start.rpc(round_minutes, current_map, rules)
+
+
+## Random map: one the host has unlocked.
+func _random_open_map() -> int:
+	var open := []
+	for i in MAP_COUNT:
+		if Profile.map_unlocked(i):
+			open.append(i)
+	return open[randi() % open.size()] if not open.is_empty() else 0
+
+
+## Host: class (co-op) or race; everyone's lobby shows it.
+func set_game_mode(mode: String) -> void:
+	game_mode = mode
+	lobby_map_changed.emit()
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		_lobby_mode.rpc(mode)
+
+
+@rpc("authority", "reliable")
+func _lobby_mode(mode: String) -> void:
+	game_mode = "race" if mode == "race" else "class"
+	lobby_map_changed.emit()
 
 
 ## Host: end the round screen and bring everyone back to the lobby.
@@ -740,6 +784,7 @@ func _register(info: Dictionary) -> void:
 	_sync_players.rpc(players)
 	if id != 1:
 		_lobby_map.rpc_id(id, map_choice)
+		_lobby_mode.rpc_id(id, game_mode)
 	players_changed.emit()
 
 
@@ -769,7 +814,7 @@ func set_map_choice(choice: int) -> void:
 
 @rpc("authority", "reliable")
 func _lobby_map(choice: int) -> void:
-	map_choice = clampi(choice, -1, MAP_COUNT - 1)
+	map_choice = clampi(choice, DAILY, MAP_COUNT - 1)
 	lobby_map_changed.emit()
 
 
@@ -780,9 +825,11 @@ func _sync_players(all_players: Dictionary) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _start(minutes: float, map_id := 0) -> void:
+func _start(minutes: float, map_id := 0, rules := {}) -> void:
 	round_minutes = minutes
 	current_map = clampi(map_id, 0, MAP_COUNT - 1)
+	round_rules = {"mode": str(rules.get("mode", "class")), "event": str(rules.get("event", "")),
+		"daily": bool(rules.get("daily", false)), "rule": str(rules.get("rule", "")), "date": int(rules.get("date", 0))}
 	in_game = true
 	if multiplayer.is_server():
 		_loaded.clear()
@@ -822,7 +869,7 @@ func _check_all_loaded() -> void:
 func _on_peer_connected(id: int) -> void:
 	# Joining mid-round: tell them to load the world; they spawn once it's ready.
 	if multiplayer.is_server() and in_game:
-		_start.rpc_id(id, round_minutes, current_map)
+		_start.rpc_id(id, round_minutes, current_map, round_rules)
 		_set_loaded_peers.rpc_id(id, loaded_peers)
 
 

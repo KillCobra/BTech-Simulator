@@ -7,6 +7,7 @@ const Maps := preload("res://scenes/world/maps/maps.gd")
 const SettingsPanel := preload("res://scenes/ui/settings_panel.gd")
 const StudentModel := preload("res://scenes/player/student_model.gd")
 const P := preload("res://scripts/palette.gd")
+const Rules := preload("res://scripts/rules.gd")
 const LOOK_PATH := "user://look.cfg"
 
 const INK := Color("2a1a0e")
@@ -81,14 +82,21 @@ func _on_lobby_map_changed() -> void:
 	if is_instance_valid(_map_about):
 		_map_about.text = _map_blurb()
 	if is_instance_valid(_map_name):
-		_map_name.text = "MAP:  %s" % ("Random" if Network.map_choice == Maps.RANDOM else Maps.title(Network.map_choice))
+		var shown := "Random" if Network.map_choice == Maps.RANDOM else ("Daily challenge" if Network.map_choice == Network.DAILY else Maps.title(Network.map_choice))
+		_map_name.text = "MAP:  %s   ·   %s" % [shown, "RACE: first out wins" if Network.game_mode == "race" else "CLASS: escape together"]
 	_show_map_preview()
 
 
 func _map_blurb() -> String:
+	var mode := "\nRACE: the first one out wins (+%d). Paper balls on rivals make staff look." % Rules.RACE_WIN_BONUS \
+			if Network.game_mode == "race" else ""
 	if Network.map_choice == Maps.RANDOM:
-		return "A surprise! One of the %d maps, picked when class starts." % Maps.LIST.size()
-	return Maps.LIST[Network.map_choice].about
+		return "A surprise! One of your unlocked maps, picked when class starts." + mode
+	if Network.map_choice == Network.DAILY:
+		var d := Rules.daily(Rules.today())
+		var done := "  (done today!)" if Profile.daily_done == int(d.date) else "  (+%d XP, +Rs %d when you escape)" % [Rules.DAILY_XP, Rules.DAILY_RS]
+		return "DAILY CHALLENGE%s\n%s%s" % [done, Rules.daily_text(d), mode]
+	return Maps.LIST[Network.map_choice].about + mode
 
 
 ## Rebuilds the background for the lobby's map. Random: show each map in turn.
@@ -108,7 +116,7 @@ func _show_map_preview() -> void:
 			_cycle_timer.start()
 	else:
 		_cycle_timer.stop()
-		_load_preview_map(Network.map_choice)
+		_load_preview_map(int(Rules.daily(Rules.today()).map) if Network.map_choice == Network.DAILY else Network.map_choice)
 
 
 func _load_preview_map(id: int) -> void:
@@ -391,6 +399,7 @@ func _show_lobby() -> void:
 	heading.add_theme_font_size_override("font_size", 28)
 	heading.add_theme_color_override("font_color", GOLD)
 	box.add_child(heading)
+	box.add_child(_profile_strip())
 
 	# Your name and classroom, both changeable until class starts.
 	var me_row := HBoxContainer.new()
@@ -443,12 +452,22 @@ func _show_lobby() -> void:
 			length.add_item("%d minutes" % minutes)
 		length.select(maxi(0, Network.ROUND_LENGTHS.find(int(Network.round_minutes))))
 		length.item_selected.connect(func(i): Network.round_minutes = float(Network.ROUND_LENGTHS[i]))
+		# Maps open in order (see Profile.map_unlocked); stars earned so far next to each.
 		var maps := OptionButton.new()
-		for m in Maps.LIST:
-			maps.add_item(m.name)
+		for i in Maps.LIST.size():
+			var open := Profile.map_unlocked(i)
+			maps.add_item("%s   %d/3 stars" % [Maps.LIST[i].name, Profile.star_count(i)] if open else "LOCKED: %s" % Maps.LIST[i].name)
+			maps.set_item_disabled(i, not open)
 		maps.add_item("Random map")
-		maps.select(Maps.LIST.size() if Network.map_choice == Maps.RANDOM else Network.map_choice)
-		maps.item_selected.connect(func(i: int): Network.set_map_choice(Maps.RANDOM if i >= Maps.LIST.size() else i))
+		maps.add_item("Daily challenge%s" % ("  (done)" if Profile.daily_done == Rules.today() else ""))
+		maps.select(Maps.LIST.size() if Network.map_choice == Maps.RANDOM else (Maps.LIST.size() + 1 if Network.map_choice == Network.DAILY else Network.map_choice))
+		maps.item_selected.connect(func(i: int):
+			Network.set_map_choice(Maps.RANDOM if i == Maps.LIST.size() else (Network.DAILY if i > Maps.LIST.size() else i)))
+		var mode := OptionButton.new()
+		mode.add_item("Class: escape together")
+		mode.add_item("Race: first out wins")
+		mode.select(1 if Network.game_mode == "race" else 0)
+		mode.item_selected.connect(func(i: int): Network.set_game_mode("race" if i == 1 else "class"))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
 		var map_field := _field("MAP", maps)
@@ -456,6 +475,7 @@ func _show_lobby() -> void:
 		row.add_child(map_field)
 		row.add_child(_field("ROUND LENGTH", length))
 		box.add_child(row)
+		box.add_child(_field("MODE", mode))
 	else:
 		_map_name = Label.new()
 		_map_name.add_theme_font_size_override("font_size", 17)
@@ -484,6 +504,32 @@ func _show_lobby() -> void:
 
 	_build_creator()
 	_refresh_lobby()
+
+
+## Level, rank, XP bar, saved-up Rs and what to go for next.
+func _profile_strip() -> VBoxContainer:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	var lv: Array = Profile.level_of(Profile.xp)
+	var top := Label.new()
+	top.text = "LEVEL %d  ·  %s        Bank: Rs %d" % [int(lv[0]), Profile.rank_title().to_upper(), Profile.bank]
+	top.add_theme_font_size_override("font_size", 15)
+	top.add_theme_color_override("font_color", Color("9fd8ff"))
+	col.add_child(top)
+	var bar := ColorRect.new()
+	bar.color = Color(1, 1, 1, 0.12)
+	bar.custom_minimum_size = Vector2(380, 8)
+	var fill := ColorRect.new()
+	fill.color = Color("7fe0a0")
+	fill.size = Vector2(380.0 * float(lv[1]) / float(lv[2]), 8)
+	bar.add_child(fill)
+	col.add_child(bar)
+	var next := Label.new()
+	next.text = "NEXT: " + Profile.next_goal()
+	next.add_theme_font_size_override("font_size", 13)
+	next.add_theme_color_override("font_color", Color("ffb37a"))
+	col.add_child(next)
+	return col
 
 
 # --- Online sessions (name + optional password) ---------------------------------------------------
@@ -726,6 +772,7 @@ var _preview_drag := false
 var _preview_face := false
 var _creator_panel: PanelContainer
 var _creator_tab := 0
+var _creator_msg: Label
 
 
 func _build_creator() -> void:
@@ -753,6 +800,12 @@ func _fill_creator() -> void:
 	heading.add_theme_color_override("font_color", GOLD)
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(heading)
+	var bank := Label.new()
+	bank.text = "Rs %d  " % Profile.bank
+	bank.tooltip_text = "Saved up from your rounds: buy locked items below"
+	bank.add_theme_font_size_override("font_size", 15)
+	bank.add_theme_color_override("font_color", GOLD)
+	head.add_child(bank)
 	head.add_child(_chip("RANDOM", _randomize_look, Color("b07cff")))
 	head.add_child(_chip("RESET", _reset_look, Color("e7d2aa")))
 	box.add_child(head)
@@ -809,11 +862,22 @@ func _fill_creator() -> void:
 	if int(prefs.get("hat", 0)) > 0:
 		extras.add_child(_field("HAT COLOUR", _color_row(P.CLOTH, "hat_color", look.get("hat_color", Color("e0524f")))))
 	extras.add_child(_field("BAG", _choice_row(P.BAG_STYLE_NAMES, int(prefs.get("bag_style", 0)), "bag_style", 3)))
+	var tag_names := []
+	var tag_ids: Array = Profile.TAGS.keys()
+	for t in tag_ids:
+		tag_names.append(Profile.TAGS[t][0])
+	var tag_row := _choice_row(tag_names, maxi(0, tag_ids.find(str(prefs.get("tag", "")))), "tag", 2)
+	extras.add_child(_field("NAME TAG (what friends see over your head)", tag_row))
 	if int(prefs.get("bag_style", 0)) != 2:
 		extras.add_child(_field("BAG COLOUR", _color_row(P.BAGS, "bag", look.get("bag", P.BAGS[0]))))
 
 	tabs.current_tab = _creator_tab
 	tabs.tab_changed.connect(func(i): _creator_tab = i)
+	_creator_msg = Label.new()
+	_creator_msg.add_theme_font_size_override("font_size", 13)
+	_creator_msg.add_theme_color_override("font_color", Color("ffb37a"))
+	_creator_msg.text = "Gold items are locked: buy them with the Rs you save up in rounds."
+	box.add_child(_creator_msg)
 
 
 func _tab(tabs: TabContainer, title: String) -> VBoxContainer:
@@ -934,13 +998,42 @@ func _choice_row(names: Array, selected: int, key: String, columns: int) -> Grid
 	grid.add_theme_constant_override("v_separation", 5)
 	for i in names.size():
 		var value: Variant = P.UNIFORMS[i][0] if key == "uniform" else i
-		var b := _chip(str(names[i]), _set_pref.bind(key, value), GOLD if i == selected else Color(1, 1, 1, 0.14))
+		if key == "tag":
+			value = Profile.TAGS.keys()[i]
+		var id := "%s:%s" % [key, str(value)]
+		var locked := not Profile.owns(id)
+		var text := str(names[i])
+		if locked:
+			text += ("  Rs %d" % Profile.price(id)) if Profile.COSMETICS.has(id) else "  (rank)"
+		var b := _chip(text, _pick_or_buy.bind(key, value, id), GOLD if i == selected else (Color("5a4a2a") if locked else Color(1, 1, 1, 0.14)))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if locked:
+			b.tooltip_text = "Buy with Rs you saved up" if Profile.COSMETICS.has(id) else "Unlocked by ranking up"
 		if i != selected:
-			b.add_theme_color_override("font_color", Color.WHITE)
+			b.add_theme_color_override("font_color", Color("ffd24a") if locked else Color.WHITE)
 			b.add_theme_color_override("font_hover_color", Color.WHITE)
 		grid.add_child(b)
 	return grid
+
+
+## A locked cosmetic: buy it with saved-up Rs, then wear it. Otherwise just wear it.
+func _pick_or_buy(key: String, value: Variant, id: String) -> void:
+	if not Profile.owns(id):
+		var problem := Profile.buy(id)
+		if problem != "":
+			if is_instance_valid(_creator_msg):
+				_creator_msg.text = problem
+			Sfx.play("deny", -6.0)
+			return
+		Sfx.play("pickup", -4.0, 1.2)
+	_set_pref(key, value)
+
+
+## Random looks only use things you own.
+func _strip_unowned(look: Dictionary) -> void:
+	for key in ["hat", "glasses_style", "bag_style", "uniform", "tag"]:
+		if look.has(key) and not Profile.owns("%s:%s" % [key, str(look[key])]):
+			look.erase(key)
 
 
 func _chip(text: String, handler: Callable, color: Color) -> Button:
@@ -994,7 +1087,11 @@ func _randomize_look() -> void:
 	}
 	if r.randf() < 0.5:
 		Network.local_info.look.accent = pick.call(P.CLOTH)
-	_set_pref("uniform", P.UNIFORMS[u][0])
+	var uniform: String = P.UNIFORMS[u][0]
+	if not Profile.owns("uniform:" + uniform):
+		uniform = "classic"
+	_strip_unowned(Network.local_info.look)
+	_set_pref("uniform", uniform)
 
 
 func _reset_look() -> void:

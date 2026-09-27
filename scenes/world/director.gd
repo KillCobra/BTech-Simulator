@@ -12,9 +12,8 @@ extends Node
 const CampusBuilder := preload("res://scenes/world/campus_builder.gd")
 const Questions := preload("res://scripts/questions.gd")
 const P := preload("res://scripts/palette.gd")
+const Rules := preload("res://scripts/rules.gd")
 
-const DETENTION_TIME := 20.0
-const DETENTION_STEP := 5.0   # every extra catch adds this much
 const PASSING_TIME := 25.0    # class change: this long to walk to the next class
 const RETURN_GRACE := 60.0    # after detention: this long to walk back to class
 const GOOD_TIME := 45.0       # sit nicely this long and your teacher calms down a notch
@@ -86,6 +85,9 @@ const QUESTS := {
 	"hoop": "Score a basket on the court",
 	"notice": "Stick a meme on a notice board",
 	"bell": "Ring the staff room bell",
+	"slip": "Answer the register, then slip out of class",
+	"boost": "Give or get a boost from a friend (crouch + E)",
+	"proxy": "Answer the register for a friend (R)",
 }
 const QUEST_POINTS := 150
 
@@ -95,7 +97,8 @@ var rooms := []   # per classroom: {"attendance_in", "calling", "exam_at", "exam
 var feed := []    # [{"t": elapsed, "text": String}]
 var marks := []   # [{"pos": Vector3, "npc": String, "by": String, "until": float}]
 var world := {"alarm_until": -100.0, "alarm_ready": 0.0, "gate_until": -100.0, "taken": {}, "stash": {},
-	"period": 0, "periods": 3, "period_len": 160.0, "period_start": 0.0, "passing_until": -100.0, "coins": []}
+	"period": 0, "periods": 3, "period_len": 160.0, "period_start": 0.0, "passing_until": -100.0, "coins": [],
+	"heat": 1, "heat_bumps": 0, "party_at": -1.0, "party_until": -100.0, "race_winner": -1, "race_end_at": -1.0}
 var elapsed := 0.0
 var round_time := 480.0
 var round_over := false
@@ -127,6 +130,8 @@ var _coin_pools: Array = []  # [weight, spots, height, values, jitter]: where mo
 var _coin_due: Array[float] = []  # elapsed time when a picked-up coin comes back somewhere new
 var _started := false
 var _rng := RandomNumberGenerator.new()
+var _pending_staff: Array = []  # [heat, Callable]: patrols that come on duty as the heat rises
+var _rules: Dictionary = {}     # this round's rules (Network.round_rules)
 
 
 func _ready() -> void:
@@ -164,6 +169,9 @@ func start(seats: Dictionary, minutes: float) -> void:
 	_seat = seats
 	round_time = minutes * 60.0
 	_rng.randomize()
+	_rules = Network.round_rules.duplicate()
+	if _event() == "birthday":
+		world.party_at = round_time * 0.45
 	for id in seats:
 		status[id] = _new_status(id)
 		_place_seat(id, seats[id])
@@ -195,20 +203,26 @@ func start(seats: Dictionary, minutes: float) -> void:
 	_add_npc({"id": "Guard", "role": "gate", "room": -1, "name": "Sergei (Guard)",
 		"pos": campus.gate_post, "yaw": campus.gate_yaw, "look": P.make_guard_look(7, true), "voice": 0.7},
 		{"state": "post", "timer": 20.0, "range": 14.0, "fov": 110.0, "walk": 1.6, "chase_speed": 4.8, "alertness": 2.2, "chaser": true})
-	_add_patrol("Peon", "Mr. Mendes (Caretaker)", campus.staff_loops.peon, P.make_guard_look(9, false), 1.9, 4.5, 1.4, 11.0, 0.75)
-	var prefect := P.make_look(4242, 0)
-	prefect.tie = Color("ffd24a")
-	prefect.bag = null
-	prefect.cap = Color("e0524f")
-	prefect.mustache = false
-	_add_patrol("Prefect", "Aisha (Prefect)", campus.staff_loops.prefect, prefect, 1.8, 4.6, 1.0, 10.0, 1.3)
-	var vp := _staff_look(777, false)
-	vp.shirt = Color("9a62d6")
-	vp.glasses = true
-	var proctor := _staff_look(888, false)
-	proctor.shirt = Color("4f7fd9")
-	_add_patrol("Proctor", "Mr. Kowalski (Proctor)", campus.staff_loops.proctor, proctor, 1.5, 4.6, 1.2, 12.0, 0.9)
-	_add_patrol("VP", "Dr. Haddad (Vice Principal)", campus.staff_loops.vp, vp, 1.4, 5.0, 1.15, 11.0, 1.1)
+	# School patrols come on duty as the heat rises (see Rules.HEAT_STAFF).
+	_pending_staff.append([Rules.HEAT_STAFF.Peon, func():
+		_add_patrol("Peon", "Mr. Mendes (Caretaker)", campus.staff_loops.peon, P.make_guard_look(9, false), 1.9, 4.5, 1.4, 11.0, 0.75)])
+	_pending_staff.append([Rules.HEAT_STAFF.Prefect, func():
+		var prefect := P.make_look(4242, 0)
+		prefect.tie = Color("ffd24a")
+		prefect.bag = null
+		prefect.cap = Color("e0524f")
+		prefect.mustache = false
+		_add_patrol("Prefect", "Aisha (Prefect)", campus.staff_loops.prefect, prefect, 1.8, 4.6, 1.0, 10.0, 1.3)])
+	_pending_staff.append([Rules.HEAT_STAFF.Proctor, func():
+		var proctor := _staff_look(888, false)
+		proctor.shirt = Color("4f7fd9")
+		_add_patrol("Proctor", "Mr. Kowalski (Proctor)", campus.staff_loops.proctor, proctor, 1.5, 4.6, 1.2, 12.0, 0.9)])
+	_pending_staff.append([Rules.HEAT_STAFF.VP, func():
+		var vp := _staff_look(777, false)
+		vp.shirt = Color("9a62d6")
+		vp.glasses = true
+		_add_patrol("VP", "Dr. Haddad (Vice Principal)", campus.staff_loops.vp, vp, 1.4, 5.0, 1.15, 11.0, 1.1)])
+	_update_heat(true)
 
 	var ss: Dictionary = campus.staff_sit
 	var ls: Dictionary = campus.librarian_sit
@@ -226,7 +240,10 @@ func start(seats: Dictionary, minutes: float) -> void:
 
 	_spawn_extras()
 	_log("Class has started. Good luck bunking!")
+	if _event() != "":
+		_log("TODAY: %s. %s" % [Rules.event_name(_event()), Rules.event_about(_event())])
 	_fx_all("bell", Vector3.ZERO, "")
+	_fx_all("round_intro", Vector3.ZERO, "")
 	_started = true
 
 
@@ -278,7 +295,8 @@ func _schedule_period(p: int) -> void:
 	for i in rooms.size():
 		rooms[i].calling = false
 		rooms[i].attendance_in = settle + plen * 0.28 + i * 6.0  # once per period
-		rooms[i].exam_at = minf(elapsed + settle + plen * 0.62 + i * 4.0, elapsed + plen - EXAM_TIME - 10.0)
+		var test_at := 0.42 if _event() == "exam_week" else 0.62  # exam week: tests come sooner
+		rooms[i].exam_at = minf(elapsed + settle + plen * test_at + i * 4.0, elapsed + plen - EXAM_TIME - 10.0)
 		rooms[i].called = []  # who has answered the roll this period
 
 
@@ -359,7 +377,7 @@ func _spawn_grounds_staff() -> void:
 		_add_npc({"id": g.id, "role": "gate", "room": -1, "name": g.name, "pos": g.pos, "yaw": g.yaw,
 			"look": P.make_guard_look(int(g.seed) + 11, true), "voice": 0.75},
 			{"state": "post", "timer": _rng.randf_range(20.0, 40.0), "range": 16.0, "fov": 110.0, "walk": 1.6,
-			"chase_speed": 4.9, "alertness": 2.0, "chaser": true})
+			"chase_speed": 4.9, "alertness": 2.0, "chaser": true, "outdoor": true})
 	for pt in campus.patrols:
 		n += 1
 		var look: Dictionary
@@ -383,6 +401,7 @@ func _spawn_grounds_staff() -> void:
 			_:
 				look = P.make_guard_look(900 + n, true)
 		_add_patrol(pt.id, pt.name, pt.loop, look, pt.walk, pt.chase, 1.3, pt.view, 0.8 + (n % 4) * 0.12)
+		_brains[-1].outdoor = true
 
 
 func _add_patrol(id: String, display: String, loop: Array, look: Dictionary, walk: float, chase: float, alertness: float, view: float, voice: float) -> void:
@@ -472,21 +491,24 @@ func free_seat(room: int) -> Vector3:
 func _new_status(id: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = id * 7919 + int(Time.get_unix_time_from_system())
-	var pool: Array = QUESTS.keys()
-	var quests := []
-	for k in 3:
-		var q: String = pool[rng.randi() % pool.size()]
-		pool.erase(q)
-		quests.append({"id": q, "done": false})
+	# A chain: the opening quest, then a medium one (a co-op one with friends about),
+	# then a risky one. Only the current step can be done.
+	var tier2: Array = Rules.TIER_2.duplicate()
+	if Network.players.size() > 1:
+		tier2.append_array(Rules.TIER_2_COOP)
+	var quests := [{"id": Rules.OPENING, "done": false},
+		{"id": tier2[rng.randi() % tier2.size()], "done": false},
+		{"id": Rules.TIER_3[rng.randi() % Rules.TIER_3.size()], "done": false}]
 	var items := []
-	for q in quests:
-		if q.id == "library":
-			items.append("library_book")
 	return {"sus": 0.0, "state": "class", "seen": false, "caught": 0, "spotted": 0, "time": 0.0, "timer": 0.0,
 		"bunking": false, "items": items, "quests": quests, "pass_until": -1.0, "gate_pass_until": -1.0, "score": 0,
+		"catches": 0, "warnings": 0, "chain": false, "style": 0, "combo": 0, "combo_best": 0, "peak": false, "calm_t": 0.0,
+		"silent_m": 0.0, "last_pos": Vector3.ZERO, "unseen_run": 0.0, "longest_unseen": 0.0, "closest": 99.0,
+		"closest_who": "", "best_distraction": 0, "present_period": -1, "watch_pos": Vector3.ZERO,
 		"grabbed": false, "shoves": 0, "seat_idx": 0, "seat": Vector3.ZERO, "strikes": 0, "good_time": 0.0,
 		"returning": false, "return_until": -1.0, "essay_line": 0, "exam_key": "", "exam_total": 0, "exams": 0,
-		"exams_missed": 0, "exam_photo": false, "cash": START_CASH, "earned": 0, "upgrades": {"pass": 0, "shoes": 0},
+		"exams_missed": 0, "exam_photo": false, "cash": 0 if _rule() == "broke" else START_CASH, "earned": 0,
+		"upgrades": {"pass": 0, "shoes": 0},
 		"exam_in_at": -1.0, "exam_paper": "", "exam_deadline": -1.0, "wait_since": -1.0, "badges": {},
 		"settle_until": -1.0, "had_pass": false, "pass_late": false, "was_in_room": true,
 		"helper_answers": -1, "helper_from": "", "assists": 0, "helped": {}}
@@ -516,7 +538,7 @@ func request(action: String, args: Dictionary) -> void:
 		return
 	# Out of the university: you can still ping, trade, boost a friend and throw paper
 	# balls back over the wall to pull staff away from friends still inside.
-	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver"]:
+	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver", "outside_bell"]:
 		return
 	match action:
 		"interact": _on_interact(id, p, int(args.get("i", -1)))
@@ -539,6 +561,7 @@ func request(action: String, args: Dictionary) -> void:
 		"help_answers": _on_help_answers(id, int(args.get("to", -1)), int(args.get("score", 0)))
 		"prank_call": _on_prank_call(id, int(args.get("to", -1)))
 		"deliver": _on_deliver(id, int(args.get("to", -1)))
+		"outside_bell": _on_outside_bell(id, p)
 		"give": _on_give(id, p, int(args.get("to", -1)), int(args.get("cash", 0)), int(args.get("slot", -1)))
 
 
@@ -641,6 +664,27 @@ func _pay(id: int, amount: int, why: String) -> void:
 		_fx.rpc_id(id, "coin", Vector3.ZERO, "")
 
 
+## A stylish move: points times the combo (which grows with every move and
+## resets when you're spotted). The HUD pops it up.
+func _style(id: int, kind: String) -> void:
+	if not status.has(id) or not Rules.STYLE.has(kind):
+		return
+	var st: Dictionary = status[id]
+	st.combo = mini(int(st.combo) + 1, Rules.COMBO_MAX)
+	st.combo_best = maxi(int(st.combo_best), int(st.combo))
+	var pts: int = int(Rules.STYLE[kind][1]) * int(st.combo)
+	st.style = int(st.style) + pts
+	_fx.rpc_id(id, "style", Vector3.ZERO, "%s|%d|%d" % [Rules.STYLE[kind][0], pts, int(st.combo)])
+
+
+func _event() -> String:
+	return str(_rules.get("event", ""))
+
+
+func _rule() -> String:
+	return str(_rules.get("rule", ""))
+
+
 func _near_counter(p: Node3D) -> bool:
 	var i := _find_interactable("counter")
 	return i != -1 and p.global_position.distance_to(campus.interactables[i].pos) < 3.5
@@ -654,6 +698,9 @@ func _on_buy(id: int, p: Node3D, what: String) -> void:
 		return
 	var price := -1
 	var level := 0
+	if what == "hall_pass" and _rule() == "no_pass":
+		_tell(id, "No hall passes today. Uncle's sold out.", Color("ffb37a"))
+		return
 	if SHOP.has(what):
 		price = SHOP[what]
 	elif UPGRADES.has(what):
@@ -896,14 +943,36 @@ func _coin_step(players: Dictionary) -> void:
 
 
 func _complete(id: int, quest: String) -> void:
-	for q in status[id].quests:
-		if q.id == quest and not q.done:
-			q.done = true
-			_fx.rpc_id(id, "quest", Vector3.ZERO, "")
-			_tell(id, "Quest complete: %s  +%d" % [QUESTS[quest], QUEST_POINTS], Color("7fe0a0"))
-			_log("%s completed a side quest!" % _name(id))
-			_pay(id, 40, "for the quest")
-			return
+	if not status.has(id):
+		return
+	var st: Dictionary = status[id]
+	for q in st.quests:
+		if q.done:
+			continue
+		if q.id != quest:
+			return  # not the current step of the chain
+		q.done = true
+		_fx.rpc_id(id, "quest", Vector3.ZERO, "")
+		_tell(id, "Quest complete: %s  +%d" % [QUESTS[quest], QUEST_POINTS], Color("7fe0a0"))
+		_log("%s completed a side quest!" % _name(id))
+		_pay(id, 40, "for the quest")
+		_style(id, "quest")
+		var next := ""
+		for n in st.quests:
+			if not n.done:
+				next = n.id
+				break
+		if next == "library" and not (st.items as Array).has("library_book") and (st.items as Array).size() < MAX_ITEMS:
+			st.items.append("library_book")
+		if next != "":
+			_tell(id, "Next quest: %s" % QUESTS.get(next, next), Color("9fd8ff"))
+		else:
+			st.chain = true
+			st.gate_pass_until = elapsed + Rules.CHAIN_PASS
+			_tell(id, "QUEST CHAIN DONE! +%d. The guards owe you one: walk out a gate in the next %ds." % [Rules.CHAIN_BONUS, int(Rules.CHAIN_PASS)], Color("ffd24a"))
+			_fx.rpc_id(id, "badge", Vector3.ZERO, "")
+			_log("%s finished the whole quest chain!" % _name(id))
+		return
 
 
 func _on_interact(id: int, p: Node3D, index: int) -> void:
@@ -1045,7 +1114,9 @@ func _on_talk(id: int, p: Node3D, npc_name: String) -> void:
 		if not _cooldown(id, "pass", 60.0):
 			b.npc.say("I just said no. Sit down.", 2.0)
 			return
-		if _rng.randf() < 0.6:
+		if _rule() == "no_pass":
+			b.npc.say("No passes today. Principal's orders.", 2.2)
+		elif _rng.randf() < 0.6:
 			b.npc.say("Fine. Washroom, then straight back.", 2.5)
 			_give(id, "hall_pass")
 		else:
@@ -1131,7 +1202,12 @@ func _on_throw(id: int, p: Node3D, from: Vector3, dir: Vector3) -> void:
 	_fx_all("paper_arc", pos, extra)
 	if OS.get_cmdline_user_args().has("--trace"):
 		print("[paper] from %s landed %s after %.2fs" % [from, pos, t])
-	get_tree().create_timer(t).timeout.connect(func(): _noise(pos, 11.0))
+	get_tree().create_timer(t).timeout.connect(func():
+		var pulled := _noise(pos, 11.0)
+		if status.has(id):
+			status[id].best_distraction = maxi(int(status[id].best_distraction), pulled)
+		if str(_rules.get("mode", "")) == "race":
+			_paper_hit(id, pos))
 
 
 ## Music room: play a note on the piano or the drums (loud: staff come to look).
@@ -1166,7 +1242,7 @@ func _on_exam(id: int, p: Node3D, room: int, exam_id: int, score: int) -> void:
 		score = int(st.helper_answers)
 	st.helper_answers = -1
 	score = clampi(score, 0, 100)
-	st.exam_total = int(st.exam_total) + score
+	st.exam_total = int(st.exam_total) + score * (2 if _event() == "exam_week" else 1)
 	st.exams = int(st.exams) + 1
 	_tell(id, "%s test: %d/100" % [SUBJECTS[room], score], Color("7fe0a0") if score >= 50 else Color("ffb37a"))
 	_log("%s scored %d in the %s test." % [_name(id), score, SUBJECTS[room]])
@@ -1198,9 +1274,10 @@ func _on_essay(id: int, text: String) -> void:
 		return
 	var want: String = LINES[int(st.essay_line) % LINES.size()]
 	if essay_matches(text, want):
-		st.timer = maxf(2.0, float(st.timer) - 5.0)
+		var off := Rules.LINE_SECONDS_LATE if int(st.catches) >= 4 else Rules.LINE_SECONDS
+		st.timer = maxf(2.0, float(st.timer) - off)
 		st.essay_line = (int(st.essay_line) + 1 + _rng.randi() % (LINES.size() - 1)) % LINES.size()
-		_tell(id, "Line accepted. -5s", Color("7fe0a0"))
+		_tell(id, "Line accepted. -%ds" % int(off), Color("7fe0a0"))
 	else:
 		_tell(id, "Copy it EXACTLY. The principal checks.", Color("ffb37a"))
 
@@ -1248,6 +1325,8 @@ func _on_boost(id: int, p: Node3D, friend_id: int) -> void:
 		return
 	p.launch.rpc_id(id, Vector3(0, 8.2, 0))
 	_fx_all("boost", p.global_position, "")
+	_complete(id, "boost")
+	_complete(friend_id, "boost")
 
 
 ## Shove whoever is right in front of you: they stagger and fall for a moment.
@@ -1383,6 +1462,22 @@ func _update_balls() -> void:
 func _start_alarm() -> void:
 	world.alarm_until = elapsed + ALARM_TIME
 	world.alarm_ready = elapsed + ALARM_COOLDOWN
+	world.heat_bumps = int(world.heat_bumps) + 1
+	_gather(campus.assembly, "Fire drill! Everyone out!")
+
+
+## Principal's birthday: the staff go for cake at the canteen for a while.
+func _start_party() -> void:
+	world.party_until = elapsed + 30.0
+	var i := _find_interactable("counter")
+	var spot: Vector3 = campus.interactables[i].pos if i != -1 else campus.assembly
+	_log("It's the principal's birthday! Staff are at the canteen for cake. GO!")
+	_fx_all("bell", Vector3.ZERO, "")
+	_gather(spot, "Cake! Happy birthday, Principal!")
+
+
+## Staff (not the canteen uncle) walk to `spot` and mill about there.
+func _gather(spot0: Vector3, line: String) -> void:
 	var k := 0
 	for b in _brains:
 		if b.role in ["teacher", "patrol", "sitter"] and b.npc.name != "Uncle":
@@ -1390,9 +1485,9 @@ func _start_alarm() -> void:
 				_end_chase(b)
 			b.state = "evacuate"
 			b.npc.pose = 0
-			var spot: Vector3 = campus.assembly + Vector3((k % 5) * 1.3 - 2.6, 0, (k / 5) * 1.3)
+			var spot: Vector3 = spot0 + Vector3((k % 5) * 1.3 - 2.6, 0, (k / 5) * 1.3 + 1.5)
 			b.npc.go_to(_path(b.npc.global_position, spot), b.walk * 1.8)
-			b.npc.say("Fire drill! Everyone out!", 2.0)
+			b.npc.say(line, 2.0)
 			k += 1
 	for r in rooms:
 		r.calling = false
@@ -1404,7 +1499,21 @@ func _open_service_gate() -> void:
 	_log("The service gate is open!")
 
 
-func _noise(pos: Vector3, radius: float) -> void:
+## Race mode: a paper ball landing on a rival makes staff look their way.
+func _paper_hit(id: int, pos: Vector3) -> void:
+	for other in status:
+		var q := players_root.get_node_or_null(str(other))
+		if other == id or q == null or status[other].state not in ["class", "chased"]:
+			continue
+		if q.global_position.distance_to(pos) < 1.8:
+			status[other].sus = minf(99.0, float(status[other].sus) + 30.0)
+			_tell(other, "%s hit you with a paper ball! Everyone's looking..." % _name(id), Color("ff9a4a"))
+			_tell(id, "Direct hit on %s!" % _name(other), Color("7fe0a0"))
+
+
+## Staff within `radius` (on the same floor) come to look. Returns how many came.
+func _noise(pos: Vector3, radius: float) -> int:
+	var pulled := 0
 	for b in _brains:
 		if b.role in ["extra"] or b.state in ["chase", "evacuate", "attendance"] or _distracted(b):
 			continue
@@ -1419,6 +1528,8 @@ func _noise(pos: Vector3, radius: float) -> void:
 		b.npc.pose = 0
 		b.npc.say("What was that?!", 1.5)
 		b.npc.go_to(_path(b.npc.global_position, pos), b.walk * 1.5)
+		pulled += 1
+	return pulled
 
 
 # --- Main loop -------------------------------------------------------------------------------------
@@ -1465,7 +1576,11 @@ func _physics_process(delta: float) -> void:
 	if int(world.period) < int(world.periods) - 1 and elapsed >= float(world.period_start) + float(world.period_len):
 		_class_change()
 	_exam_step(players)
-	var alarm_on: bool = elapsed < float(world.alarm_until)
+	_update_heat(false)
+	if float(world.party_at) > 0.0 and elapsed >= float(world.party_at):
+		world.party_at = -1.0
+		_start_party()
+	var alarm_on: bool = elapsed < float(world.alarm_until) or elapsed < float(world.party_until)
 	for r in rooms:
 		if not r.calling and not alarm_on:
 			r.attendance_in -= delta
@@ -1477,7 +1592,8 @@ func _physics_process(delta: float) -> void:
 	for brain in _brains:
 		if is_instance_valid(brain.npc):
 			_think(brain, delta, players)
-	_cctv_step(delta, players)
+	if _event() != "power_cut":
+		_cctv_step(delta, players)
 	_update_balls()
 	_coin_step(players)
 	for id in players:
@@ -1491,7 +1607,8 @@ func _physics_process(delta: float) -> void:
 	for id in players:
 		if status[id].state != "escaped":
 			all_done = false
-	if elapsed >= round_time or all_done:
+	var race_over: bool = float(world.race_end_at) > 0.0 and elapsed >= float(world.race_end_at)
+	if elapsed >= round_time or all_done or race_over:
 		_end_round()
 	_snapshot()
 
@@ -1656,6 +1773,7 @@ func _update_player(id: int, p: Node3D, delta: float) -> void:
 				# Hiding in a locker or stall calms things down twice as fast.
 				st.sus = maxf(0.0, st.sus - (14.0 if p.hidden else 7.0) * delta)
 			_behaviour(id, p, st, delta)
+			_style_step(id, p, st, delta)
 			if p.global_position.y < -0.9:
 				_washed_back(id, p)
 			elif campus.escaped(p.global_position):
@@ -1670,6 +1788,45 @@ func _update_player(id: int, p: Node3D, delta: float) -> void:
 				for b in _brains:
 					if b.target == id:
 						_end_chase(b)
+				if str(_rules.get("mode", "")) == "race" and int(world.race_winner) == -1:
+					world.race_winner = id
+					world.race_end_at = elapsed + 4.0
+					_log("%s WINS THE RACE!" % _name(id))
+					_fx_all("bell", Vector3.ZERO, "")
+
+
+## Close calls, silent walks and time unseen (all only while out of class, not during the bell).
+func _style_step(id: int, p: Node3D, st: Dictionary, delta: float) -> void:
+	var pos := p.global_position
+	var moved := Vector2(pos.x - st.last_pos.x, pos.z - st.last_pos.z).length() if st.last_pos != Vector3.ZERO else 0.0
+	st.last_pos = pos
+	# CLOSE CALL: suspicion over 80, then out of sight for 1.5 s without a chase.
+	if st.seen:
+		st.calm_t = 0.0
+		if float(st.sus) >= 80.0 and st.state == "class":
+			st.peak = true
+	elif st.peak:
+		st.calm_t = float(st.calm_t) + delta
+		if st.calm_t >= 1.5:
+			st.peak = false
+			if st.state == "class":
+				_style(id, "close_call")
+	var out: bool = st.state == "class" and campus.room_of(pos) != current_room(id) and elapsed > float(world.passing_until) \
+			and elapsed > float(st.pass_until)
+	if out and not st.seen and not p.hidden:
+		st.unseen_run = float(st.unseen_run) + delta
+		st.longest_unseen = maxf(float(st.longest_unseen), float(st.unseen_run))
+		st.silent_m = float(st.silent_m) + minf(moved, 1.0)
+		if st.silent_m >= Rules.SILENT_METRES:
+			st.silent_m = 0.0
+			_style(id, "silent")
+	else:
+		st.unseen_run = 0.0
+		if st.seen:
+			st.silent_m = 0.0
+	# Opening quest: answered the register this period, and now out of the room.
+	if int(st.present_period) == int(world.period) and out:
+		_complete(id, "slip")
 
 
 ## Back from detention: the teacher scolds you and gets stricter. Sitting
@@ -1752,9 +1909,30 @@ func _end_round() -> void:
 		if st.state == "escaped":
 			score += 500 + int(maxf(0.0, round_time - float(st.time)))
 		score += int(st.get("assists", 0)) * ASSIST_POINTS
+		score += int(st.style)
+		if st.chain:
+			score += Rules.CHAIN_BONUS
+		var speedy: bool = _rule() == "speed" and st.state == "escaped" and float(st.time) <= Rules.DAILY_SPEED
+		if speedy:
+			score += 300
+		var won: bool = int(world.race_winner) == id
+		if won:
+			score += Rules.RACE_WIN_BONUS
 		st.score = score
-		list.append({"name": _name(id), "score": score, "escaped": st.state == "escaped", "time": st.time,
-			"quests": done, "caught": st.caught, "spotted": st.spotted, "tests": int(st.get("exam_total", 0)), "assists": int(st.get("assists", 0))})
+		list.append({"id": id, "name": _name(id), "score": score, "escaped": st.state == "escaped", "time": st.time,
+			"quests": done, "caught": st.caught, "spotted": st.spotted, "tests": int(st.get("exam_total", 0)), "assists": int(st.get("assists", 0)),
+			"cash": int(st.cash), "style": int(st.style), "combo_best": int(st.combo_best), "warnings": int(st.warnings),
+			"chain": bool(st.chain), "speedy": speedy, "won": won, "closest": float(st.closest), "closest_who": str(st.closest_who),
+			"longest_unseen": float(st.longest_unseen), "best_distraction": int(st.best_distraction), "class_bonus": false})
+	# Class mode: everyone out (2+ players) = +50% for everyone.
+	var everyone := list.size() >= 2 and str(_rules.get("mode", "class")) == "class"
+	for row in list:
+		everyone = everyone and bool(row.escaped)
+	if everyone:
+		for row in list:
+			row.score = int(round(int(row.score) * (1.0 + Rules.CLASS_ESCAPE_BONUS)))
+			row.class_bonus = true
+		_log("THE WHOLE CLASS ESCAPED! +50% for everyone!")
 	list.sort_custom(func(a, b): return a.score > b.score)
 	results = list
 	for b in _brains:
@@ -1764,6 +1942,58 @@ func _end_round() -> void:
 	_log("The final bell rang!")
 	if OS.get_cmdline_user_args().has("--quit-at-end"):  # dev/CI: stop once the round is over
 		get_tree().create_timer(1.0).timeout.connect(get_tree().quit)
+
+
+## Heat: time, catches and fire alarms make the school stricter. New patrols come on duty.
+func _update_heat(quiet: bool) -> void:
+	var floor_heat := 2 if _event() == "inspection" else 1
+	var heat := Rules.heat_for(elapsed / maxf(1.0, round_time), int(world.heat_bumps), floor_heat)
+	if OS.get_cmdline_user_args().has("--heat4"):  # dev
+		heat = 4
+	if heat > int(world.heat) or quiet:
+		var rose: bool = heat > int(world.heat)
+		world.heat = heat
+		if rose and not quiet:
+			_log(Rules.HEAT_NAMES[heat].to_upper())
+			_fx_all("heat", Vector3.ZERO, str(heat))
+	for k in range(_pending_staff.size() - 1, -1, -1):
+		if int(_pending_staff[k][0]) <= int(world.heat):
+			(_pending_staff[k][1] as Callable).call()
+			_pending_staff.remove_at(k)
+
+
+## Escaped: ring the bell at the gate. The nearest staff come out to see who it is,
+## away from wherever they were watching.
+func _on_outside_bell(id: int, p: Node3D) -> void:
+	if not _cooldown(id, "outside_bell", 40.0):
+		_tell(id, "They're already coming to look. Wait a bit.", Color("ffb37a"))
+		return
+	var near: Array = []
+	for b in _brains:
+		if b.role in ["gate", "patrol", "teacher"] and b.state != "chase":
+			near.append(b)
+	near.sort_custom(func(a, c): return a.npc.global_position.distance_to(p.global_position) < c.npc.global_position.distance_to(p.global_position))
+	var spot: Vector3 = p.global_position
+	var came := 0
+	for b in near.slice(0, 3):
+		b.resume = b.state
+		b.state = "investigate"
+		b.timer = 6.0
+		b.npc.alert = 1
+		b.npc.pose = 0
+		b.npc.say("Who's ringing at this hour?!", 2.0)
+		b.npc.go_to(_path(b.npc.global_position, spot), b.walk * 1.4)
+		b.distracted_until = elapsed + 3.0
+		came += 1
+	_fx_all("office_bell", spot, "")
+	status[id].assists = int(status[id].assists) + 1
+	_tell(id, "Ding-dong! %d staff are coming out to the gate. +%d" % [came, ASSIST_POINTS], Color("7fe0a0"))
+	_log("%s rang the bell at the gate!" % _name(id))
+
+
+## Rain: grounds staff see less far. Everyone else as usual.
+func _range(b: Dictionary) -> float:
+	return float(b.range) * (0.6 if _event() == "rain" and b.get("outdoor", false) else 1.0)
 
 
 func _name(id: int) -> String:
@@ -1802,9 +2032,10 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 			var st: Dictionary = status[id]
 			if st.state == "detention" or st.state == "escaped":
 				continue
-			if not _suspicious(id, p, b) or not _can_see(npc, p, b.range, b.fov):
+			if not _suspicious(id, p, b) or not _can_see(npc, p, _range(b), b.fov):
 				continue
 			st.seen = true
+			st.watch_pos = npc.global_position
 			var dist: float = npc.global_position.distance_to(p.global_position)
 			var rate: float = 34.0 * b.alertness * clampf(1.25 - dist / b.range, 0.3, 1.25) * (0.6 if p.crouching else 1.0)
 			if b.role == "teacher" and b.room == current_room(id):
@@ -1815,6 +2046,8 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 				rate *= 0.5  # chatting at the assembly point
 			if _in_crowd(p):
 				rate *= 0.45
+			if int(world.heat) >= 4:
+				rate *= 1.3  # lockdown: everyone's on edge
 			st.sus = minf(100.0, st.sus + rate * delta)
 			if st.sus > spotted_sus:
 				spotted_sus = st.sus
@@ -1840,7 +2073,7 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 
 	# Hear sprinting nearby.
 	if b.state in ["write", "watch", "patrol", "post", "return", "sit"]:
-		var ears: float = NOISE_RADIUS * (1.6 if npc.name == "Librarian" else 1.0)
+		var ears: float = NOISE_RADIUS * (1.6 if npc.name == "Librarian" else 1.0) * (1.5 if _event() == "rain" else 1.0)
 		for id in players:
 			var p: Node3D = players[id]
 			var heard: float = ears * (0.5 if int(status[id].upgrades.get("shoes", 0)) > 0 else 1.0)
@@ -1988,6 +2221,8 @@ func _attendance_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		if b.get("proxied", false):
 			npc.say("...Present!  (Hmm, you sound different.)", 1.8)
 			_log("%s answered attendance for %s!" % [_name(b.proxied_by), _name(id)])
+			_style(int(b.proxied_by), "proxy")
+			_complete(int(b.proxied_by), "proxy")
 		elif status.has(id) and (elapsed < float(status[id].get("return_until", -1.0)) or elapsed < float(status[id].pass_until)):
 			npc.say("%s? ...On a pass, fine." % _name(id), 1.8)
 		elif status.has(id) and status[id].state in ["class", "chased"]:
@@ -2015,6 +2250,7 @@ func _attendance_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 	if present:
 		npc.say("%s?   ...Present!" % _name(next), 1.8)
 		rooms[b.room].called.append(next)
+		st.present_period = int(world.period)
 		_pay(next, 5, "for being present")
 	else:
 		npc.say("%s?  ...%s?" % [_name(next), _name(next)], 2.0)
@@ -2032,7 +2268,9 @@ func _gate_guard(b: Dictionary, delta: float) -> void:
 		"post":
 			npc.holding = false
 			npc.stop(float(b.home_yaw) + sin(b.t * 0.7) * 0.9)
-			if b.timer <= 0.0:
+			if b.timer <= 0.0 and int(world.heat) >= 4:
+				b.timer = 10.0  # lockdown: no chai breaks
+			elif b.timer <= 0.0:
 				b.state = "break"
 				b.timer = 8.0
 				npc.stop(float(b.home_yaw) + PI / 2.0)
@@ -2147,10 +2385,12 @@ func _cctv_step(delta: float, players: Dictionary) -> void:
 			var st: Dictionary = status[id]
 			if st.state != "class" or not _suspicious_generic(id, p):
 				continue
-			if not _can_see_from(cam.pos, fwd, p, 16.0, 55.0, float(cam.get("floor", 0.0))):
+			var sharp: bool = int(world.heat) >= 3  # heat 3+: cameras see further and react faster
+			if not _can_see_from(cam.pos, fwd, p, 20.0 if sharp else 16.0, 55.0, float(cam.get("floor", 0.0))):
 				continue
 			st.seen = true
-			st.sus = minf(100.0, st.sus + 22.0 * delta * (0.45 if _in_crowd(p) else 1.0))
+			st.watch_pos = cam.pos
+			st.sus = minf(100.0, st.sus + 22.0 * delta * (0.45 if _in_crowd(p) else 1.0) * (1.6 if sharp else 1.0))
 			if st.sus >= 100.0:
 				_log("CCTV caught %s on camera!" % _name(id))
 				_call_help(id, p.global_position, "CCTV")
@@ -2187,6 +2427,9 @@ func _start_chase(b: Dictionary, id: int, pos: Vector3) -> void:
 	b.last_seen = pos
 	status[id].state = "chased"
 	status[id].spotted += 1
+	status[id].combo = 0
+	status[id].peak = false
+	b.min_dist = 99.0
 	b.npc.alert = 2
 	b.npc.pose = 0
 	b.npc.holding = false
@@ -2205,6 +2448,7 @@ func _chase_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 	var st: Dictionary = status[id]
 	var seen := _can_see(npc, p, b.range * 1.4, 200.0)
 	var dist: float = npc.global_position.distance_to(p.global_position)
+	b.min_dist = minf(float(b.get("min_dist", 99.0)), dist)
 	# Safety net: a chase that goes nowhere for too long ends (never a
 	# "RUN!" banner that lasts all round).
 	b.chase_t = float(b.get("chase_t", 0.0)) + delta
@@ -2234,7 +2478,11 @@ func _chase_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		st.sus = 60.0
 		npc.say("Hmph. Lost them.", 2.0)
 		_log("%s escaped %s." % [_name(id), npc.display_name])
+		if float(b.min_dist) < float(st.closest):
+			st.closest = float(b.min_dist)
+			st.closest_who = str(npc.display_name).get_slice(" (", 0)
 		_end_chase(b)
+		_style(id, "shake_off")
 		return
 	# Catching takes a moment: the student is grabbed and can shove free.
 	if dist < CATCH_DIST and (not p.hidden or b.saw_hide) and (p.hidden or _within_reach(p, npc)):
@@ -2297,10 +2545,28 @@ func _catch(b: Dictionary, id: int, reason := "") -> void:
 		_log("%s used a Detention Skip on %s!" % [_name(id), b.npc.display_name])
 		_end_chase(b)
 		return
+	st.catches = int(st.catches) + 1
+	st.combo = 0
+	st.peak = false
+	world.heat_bumps = int(world.heat_bumps) + 1
+	if Rules.warning_only(Network.current_map, int(st.catches)):
+		# First Day, first catch: a telling-off and back to your seat.
+		st.warnings = int(st.warnings) + 1
+		st.state = "class"
+		st.grabbed = false
+		st.sus = 40.0
+		b.npc.say("This is your WARNING, %s. Back to your seat. Next time: detention." % _name(id), 3.5)
+		_tell(id, "Let off with a WARNING. Next catch means detention!", Color("ffb37a"))
+		_fx.rpc_id(id, "caught", Vector3.ZERO, "")
+		_log("%s got a warning from %s." % [_name(id), b.npc.display_name])
+		_teleport(id, st.seat, 0.0)
+		_end_chase(b)
+		return
 	st.state = "detention"
 	st.caught += 1
-	# Every catch adds 5 s; shoving staff makes it worse.
-	st.timer = minf(DETENTION_TIME + DETENTION_STEP * (st.caught - 1) + 8.0 * st.shoves, 90.0)
+	# Short at first, longer every time (see Rules.DETENTION); shoving staff makes it worse.
+	st.timer = minf(Rules.detention_time(Network.current_map, int(st.catches)) + 8.0 * st.shoves, 90.0)
+	_tell(id, "DETENTION: %d s." % int(st.timer), Color("ff6a6a"))
 	st.returning = false
 	st.essay_line = _rng.randi() % LINES.size()
 	var taken := []

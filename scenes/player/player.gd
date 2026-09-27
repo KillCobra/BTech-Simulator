@@ -76,6 +76,8 @@ var _talk_shot := Transform3D()
 var _talk_cam: Camera3D
 var _sit_intro := 0.0      # seconds left of the third-person "sitting down" shot
 var _cine_fov := 55.0
+var _escape_t := 0.0       # seconds left of the look back at the university you just escaped
+var spectating := -1       # escaped: watching this friend (peer id), -1 = not
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
@@ -112,6 +114,9 @@ func _build() -> void:
 	_label.font_size = 26
 	_label.outline_size = 10
 	_label.modulate = Color(1, 1, 1, 0.9)
+	var tag: Array = Profile.TAGS.get(str(look.get("tag", "")), Profile.TAGS[""])
+	_label.modulate = tag[1]
+	_label.outline_modulate = tag[2]
 	_label.position.y = STAND_HEIGHT + 0.3
 	add_child(_label)
 
@@ -154,6 +159,14 @@ func _ready() -> void:
 				var at := arg.trim_prefix("--at=").split_floats(",")  # x,z or x,y,z
 				position = Vector3(at[0], at[1] + 0.05, at[2]) if at.size() == 3 else Vector3(at[0], 0.05, at[1])
 				seated = false
+			if arg == "--spectate":  # dev: watch the first friend, a few seconds in
+				get_tree().create_timer(9.0).timeout.connect(func():
+					for other in get_parent().get_children():
+						if other != self:
+							spectate(int(str(other.name)))
+							return)
+			if arg == "--bell":  # dev: ring the bell at the gate (escaped)
+				get_tree().create_timer(8.0).timeout.connect(func(): _request("outside_bell", {}))
 			if arg.begins_with("--walk="):
 				for point in arg.trim_prefix("--walk=").split(";"):
 					if point.begins_with("!"):
@@ -218,6 +231,10 @@ func _toggle_locker(i: int) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_multiplayer_authority() or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		return
+	if spectating >= 0 and (event.is_action_pressed("jump") or event.is_action_pressed("interact")):
+		spectate(-1)  # back to your own eyes
+		get_viewport().set_input_as_handled()
 		return
 	if _sit_intro > 0.0:
 		if event.is_action_pressed("interact") or event.is_action_pressed("jump"):
@@ -535,7 +552,10 @@ func _physics_process(delta: float) -> void:
 			_instrument = -1  # someone's coming: hands off the keys
 		if seated and _director and _director.status.get(int(str(name)), {}).get("state", "class") != "class":
 			_stand()  # chased, caught...: on your feet
-		if _talk_npc != null or _sit_intro > 0.0:
+		if spectating >= 0:
+			var friend: Node = get_parent().get_node_or_null(str(spectating))
+			interact_hint = "Watching %s   [%s] back to you" % [friend.display_name if friend else "a friend", GameInput.key_label("jump")]
+		elif _talk_npc != null or _sit_intro > 0.0:
 			interact_hint = ""
 		elif seated:
 			interact_hint = "[%s] Stand up   (or just walk off)" % GameInput.key_label("interact")
@@ -598,7 +618,7 @@ func _move(delta: float) -> void:
 
 	# With the phone out you can still walk (no sprinting): the mouse taps the screen.
 	var phone := _phone_open()
-	var has_control := (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or phone) and _instrument < 0 and _talk_npc == null
+	var has_control := (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or phone) and _instrument < 0 and _talk_npc == null and spectating < 0 and _escape_t <= 0.0
 	var input := Vector2.ZERO
 	if has_control:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -801,7 +821,45 @@ func _cine_begin(shot: Transform3D, fov := 55.0) -> void:
 
 
 func _cine_on() -> bool:
-	return _talk_npc != null or _sit_intro > 0.0
+	return _talk_npc != null or _sit_intro > 0.0 or _escape_t > 0.0 or spectating >= 0
+
+
+## You're out: the camera swings round in front of you and looks back at the university.
+func escape_shot(target: Vector3) -> void:
+	if not is_multiplayer_authority():
+		return
+	var away := global_position - target
+	away.y = 0.0
+	away = away.normalized() if away.length() > 0.1 else -global_transform.basis.z
+	var at := global_position + away * 4.5 + Vector3(0, 2.4, 0)
+	_escape_t = 3.2
+	_cine_begin(Transform3D(Basis(), at).looking_at(target.lerp(global_position + Vector3(0, 1.4, 0), 0.35), Vector3.UP), 62.0)
+
+
+## Escaped: watch a friend still inside from over their shoulder (-1 stops).
+func spectate(id: int) -> void:
+	if not is_multiplayer_authority():
+		return
+	spectating = id
+	if id >= 0:
+		_spectate_frame()
+		_cine_begin(_talk_shot, 65.0)
+
+
+func _spectate_frame() -> void:
+	var friend: Node3D = _world.get_node("Players").get_node_or_null(str(spectating)) if _world else null
+	if friend == null or not is_instance_valid(friend):
+		spectating = -1
+		return
+	var fwd := -friend.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var head := friend.global_position + Vector3(0, 1.5, 0)
+	var at := head - fwd * 3.2 + Vector3(0, 0.9, 0)
+	var hit := get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(head, at, 1, [friend.get_rid()]))
+	if not hit.is_empty():
+		at = head.lerp(hit.position, 0.85)
+	_talk_shot = Transform3D(Basis(), at).looking_at(head + fwd * 2.0, Vector3.UP)
 
 
 ## Sit on chair `index` of the interactables: a quick third-person shot of you
@@ -926,6 +984,10 @@ func _talk_step(delta: float) -> void:
 			_end_talk()
 	if _sit_intro > 0.0:
 		_sit_intro = maxf(0.0, _sit_intro - delta)
+	if _escape_t > 0.0:
+		_escape_t = maxf(0.0, _escape_t - delta)
+	if spectating >= 0:
+		_spectate_frame()
 	if _talk_cam == null:
 		return
 	var on := _cine_on()

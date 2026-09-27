@@ -158,6 +158,8 @@ static func apply_prefs(look: Dictionary, prefs: Dictionary) -> Dictionary:
 		look.height = HEIGHTS[clampi(int(prefs.height), 0, HEIGHTS.size() - 1)]
 	if int(look.get("bag_style", 0)) == 2:
 		look.bag = null
+	if prefs.has("tag"):
+		look.tag = str(prefs.tag).left(16)  # name-tag style (see Profile.TAGS)
 	return look
 
 

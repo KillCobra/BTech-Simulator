@@ -92,6 +92,47 @@ class Markers extends Control:
 
 
 const MapView := preload("res://scenes/ui/map_view.gd")
+const Rules := preload("res://scripts/rules.gd")
+
+
+## Screen-edge glow towards whoever is about to spot you (angle 0 = straight ahead).
+class EdgePulse extends Control:
+	var angle := 0.0
+	var strength := 0.0
+	var t := 0.0
+
+	func _draw() -> void:
+		if strength <= 0.01:
+			return
+		var c := size / 2.0
+		var dir := Vector2(sin(angle), -cos(angle))
+		# Where that direction leaves the screen (a slightly inset rectangle).
+		var half := c - Vector2(30, 30)
+		var k := minf(half.x / maxf(absf(dir.x), 0.001), half.y / maxf(absf(dir.y), 0.001))
+		var at := c + dir * k
+		var pulse := 0.55 + 0.45 * sin(t * (6.0 + 8.0 * strength))
+		for i in 6:
+			var r := 140.0 - i * 20.0
+			draw_circle(at, r, Color(1.0, 0.15, 0.1, 0.05 * strength * pulse * (i + 1)))
+		# A chevron pointing at them.
+		var side := Vector2(-dir.y, dir.x)
+		var tip := at + dir * 6.0
+		var pts := PackedVector2Array([tip, tip - dir * 26.0 + side * 16.0, tip - dir * 18.0, tip - dir * 26.0 - side * 16.0])
+		draw_colored_polygon(pts, Color(1.0, 0.3, 0.2, 0.9 * strength))
+
+
+## A row of three stars (filled = earned, ringed = new this round).
+class StarRow extends Control:
+	var got: Array = [false, false, false]
+	var fresh: Array = []
+
+	func _draw() -> void:
+		for k in 3:
+			var at := Vector2(18 + k * 40, size.y / 2.0)
+			var on: bool = got[k]
+			if fresh.has(k):
+				draw_circle(at, 17.0, Color(1.0, 0.85, 0.3, 0.35))
+			MapView.draw_icon_star(self, at, 1.5, Color("ffd24a") if on else Color(1, 1, 1, 0.18))
 const Icons := preload("res://scripts/icons.gd")
 const Questions := preload("res://scripts/questions.gd")
 const ExamGame := preload("res://scenes/ui/exam_game.gd")
@@ -234,6 +275,14 @@ var _trail: Node3D
 var _floor_label: Label
 var _floor_seen := -1
 var _floor_flash := 0.0
+# Heat, the round intro, style pop-ups, the spotted warning and the escape moment.
+var _heat_label: Label
+var _intro: PanelContainer
+var _style_box: VBoxContainer
+var _edge: EdgePulse
+var _warn_beep := 0.0
+var _escape_big: Label
+var _profile_done := false
 # Pappu Uncle's canteen shop.
 var _shop: PanelContainer
 var _shop_body: VBoxContainer
@@ -329,6 +378,29 @@ func _ready() -> void:
 	_board.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_board.visible = false
 	add_child(_board)
+
+	_edge = EdgePulse.new()
+	_edge.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_edge)
+	move_child(_edge, 1)  # over the vignette, under everything else
+
+	_style_box = VBoxContainer.new()
+	_style_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_style_box.position += Vector2(90, -120)
+	_style_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_style_box.add_theme_constant_override("separation", 2)
+	add_child(_style_box)
+
+	_escape_big = _outlined("", 64)
+	_escape_big.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_escape_big.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_escape_big.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_escape_big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_escape_big.position.y -= 150
+	_escape_big.add_theme_color_override("font_color", Color("7fe0a0"))
+	_escape_big.visible = false
+	add_child(_escape_big)
 
 	_build_dialog()
 	_build_end_screen()
@@ -436,6 +508,9 @@ func _build_meter() -> void:
 	_pass.add_theme_font_size_override("font_size", 15)
 	_pass.add_theme_color_override("font_color", Color("9fd8ff"))
 	box.add_child(_pass)
+	_heat_label = Label.new()
+	_heat_label.add_theme_font_size_override("font_size", 14)
+	box.add_child(_heat_label)
 	# Merit badges (full marks in a test), one per subject, with a count.
 	_badges = HBoxContainer.new()
 	_badges.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -584,7 +659,7 @@ func _build_end_screen() -> void:
 	_end.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_end.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_end.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_end.custom_minimum_size = Vector2(620, 0)
+	_end.custom_minimum_size = Vector2(880, 0)
 	_end.visible = false
 	add_child(_end)
 	var box := VBoxContainer.new()
@@ -758,6 +833,9 @@ func setup_map(campus: RefCounted) -> void:
 						for action in ["help_answers", "prank_call", "deliver", "give"]:
 							director.request.rpc_id(1, action, {"to": int(pid), "score": 80, "cash": 10})
 							await get_tree().create_timer(0.5).timeout)
+		if arg == "--stylepop":  # dev: style pop-ups for screenshots
+			for k in 3:
+				get_tree().create_timer(5.0 + k * 0.5).timeout.connect(on_effect.bind("style", Vector3.ZERO, ["CLOSE CALL|50|1", "SILENT|60|2", "SHOOK THEM OFF|180|3"][k]))
 		if arg == "--navshow":  # dev: the Navigate trail to your seat, a few seconds in
 			get_tree().create_timer(5.0).timeout.connect(func(): _route_until = _now() + ROUTE_SHOW)
 		if arg == "--scan":  # dev: staff tracker on, a few seconds in
@@ -1480,6 +1558,11 @@ func _phone_button(text: String, handler: Callable, color := Color("7fd0ea"), en
 
 func _app_home(director: Node, st: Dictionary) -> void:
 	var now: float = director.elapsed
+	var ev := str(Network.round_rules.get("event", ""))
+	if ev != "":
+		_phone_text("TODAY: " + Rules.event_name(ev), 13, Color("ff9a4a"))
+		_phone_text(Rules.event_about(ev), 11, Color(1, 1, 1, 0.65))
+	_phone_text("Heat %d/4" % int(director.world.get("heat", 1)), 12, Color("ffb37a"))
 	_phone_text(_clock(director.round_time - now), 40, Color("ffd24a"))
 	_phone_text("until the final bell", 12, Color(1, 1, 1, 0.6))
 	var room: int = director.current_room(multiplayer.get_unique_id())
@@ -1603,6 +1686,8 @@ func _app_help(director: Node, st: Dictionary) -> void:
 		_phone_text("Escape the university first. From outside you can text friends their test answers, prank-call the staff chasing them, send money and order samosa delivery.", 12, Color(1, 1, 1, 0.65))
 		return
 	_phone_text("Each help: +%d points. Answers: once per friend per period." % director.ASSIST_POINTS, 12, Color(1, 1, 1, 0.6))
+	_phone_body.add_child(_phone_button("Ring the bell at the gate", func(): director.request.rpc_id(1, "outside_bell", {}), Color("ffd24a")))
+	_phone_text("Calls the nearest staff out to the gate, away from their posts.", 11, Color(1, 1, 1, 0.55))
 	var me := multiplayer.get_unique_id()
 	var any := false
 	for pid in director.status:
@@ -1648,6 +1733,10 @@ func _app_help(director: Node, st: Dictionary) -> void:
 			Color("ffd24a"), int(st.get("cash", 0)) >= 10))
 		grid.add_child(_phone_button("Samosa Rs %d" % director.DELIVERY_PRICE, func(): director.request.rpc_id(1, "deliver", {"to": id}),
 			Color("e0a050"), int(st.get("cash", 0)) >= director.DELIVERY_PRICE))
+		var me_node: Node = get_parent().get_node("Players").get_node_or_null(str(me))
+		var watching: bool = me_node != null and int(me_node.get("spectating")) == id
+		_phone_body.add_child(_phone_button("Stop watching" if watching else "Watch %s" % who,
+			func(): if me_node: me_node.spectate(-1 if watching else id), Color("b07cff")))
 	if not any:
 		_phone_text("\nNobody else in this session.", 13, Color(1, 1, 1, 0.5))
 
@@ -2056,6 +2145,122 @@ func _map_markers(director: Node, me: Node, players: Node, npcs: Node, floor_sho
 
 # --- Per-frame -----------------------------------------------------------------------------
 
+## Round effects the HUD reacts to (forwarded by the world).
+func on_effect(kind: String, _pos: Vector3, extra: String) -> void:
+	match kind:
+		"style":
+			var parts := extra.split("|")
+			if parts.size() == 3:
+				_pop_style(parts[0], int(parts[1]), int(parts[2]))
+		"heat":
+			var h := int(extra)
+			toast("HEAT %d!  %s" % [h, Rules.HEAT_NAMES[clampi(h, 1, 4)].get_slice(": ", 1)], Color("ff9a4a"))
+			Sfx.play("alarm_spotted", -10.0, 0.7 + 0.1 * h)
+		"round_intro":
+			_show_intro.call_deferred()
+		"win":
+			_show_escape_moment()
+
+
+## "CLOSE CALL +50  x3", rising and fading next to the crosshair.
+func _pop_style(title: String, points: int, combo: int) -> void:
+	var l := _outlined("%s  +%d%s" % [title, points, "   x%d" % combo if combo > 1 else ""], 22 + mini(combo, 5) * 2)
+	l.add_theme_color_override("font_color", [Color("ffffff"), Color("ffd24a"), Color("ffb040"), Color("ff7a3a"), Color("ff4a8a")][clampi(combo - 1, 0, 4)])
+	_style_box.add_child(l)
+	Sfx.play("pickup", -6.0, 1.2 + 0.1 * combo)
+	var tw := create_tween()
+	l.scale = Vector2(1.4, 1.4)
+	tw.tween_property(l, "scale", Vector2.ONE, 0.18)
+	tw.tween_interval(1.4)
+	tw.tween_property(l, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(l.queue_free)
+
+
+## Start of the round: the map's trick, today's event and rules, the first quest.
+func _show_intro() -> void:
+	if is_instance_valid(_intro):
+		_intro.queue_free()
+	var rules: Dictionary = Network.round_rules
+	_intro = PanelContainer.new()
+	_intro.add_theme_stylebox_override("panel", _card(Color(0.08, 0.08, 0.14, 0.9), 16, 18))
+	_intro.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_intro.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_intro.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_intro.position.y += 150
+	_intro.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_intro)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	_intro.add_child(box)
+	var add := func(text: String, size_px: int, color: Color):
+		var l := Label.new()
+		l.text = text
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 560
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.add_theme_font_size_override("font_size", size_px)
+		l.add_theme_color_override("font_color", color)
+		box.add_child(l)
+	if rules.get("daily", false):
+		add.call("DAILY CHALLENGE", 26, Color("ff9a4a"))
+		add.call(str(Rules.DAILY_RULES.get(str(rules.rule), "")), 15, Color("ffb37a"))
+	if str(rules.get("mode", "")) == "race":
+		add.call("RACE: FIRST ONE OUT WINS", 24, Color("ff6a8a"))
+		add.call("Paper balls that land on rivals make the staff look their way.", 14, Color(1, 1, 1, 0.75))
+	add.call(Rules.map_tip(Network.current_map), 15, Color("9fd8ff"))
+	var ev := str(rules.get("event", ""))
+	if ev != "":
+		add.call("TODAY: " + Rules.event_name(ev), 20, Color("ffd24a"))
+		add.call(Rules.event_about(ev), 14, Color(1, 1, 1, 0.8))
+	add.call("FIRST QUEST: " + str(preload("res://scenes/world/director.gd").QUESTS[Rules.OPENING]), 16, Color("7fe0a0"))
+	var tw := create_tween()
+	tw.tween_interval(9.0)
+	tw.tween_property(_intro, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(_intro.queue_free)
+
+
+## You're out: the time, big.
+func _show_escape_moment() -> void:
+	var director: Node = get_parent().get_node_or_null("Director")
+	var st: Dictionary = director.status.get(multiplayer.get_unique_id(), {}) if director else {}
+	if st.get("state", "") != "escaped":
+		return
+	_escape_big.text = "ESCAPED!\n%s" % _clock(float(st.get("time", 0.0)))
+	_escape_big.visible = true
+	_escape_big.modulate.a = 1.0
+	_escape_big.pivot_offset = _escape_big.size / 2.0
+	_escape_big.scale = Vector2(2.2, 2.2)
+	var tw := create_tween()
+	tw.tween_property(_escape_big, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(2.4)
+	tw.tween_property(_escape_big, "modulate:a", 0.0, 0.8)
+	tw.tween_callback(func(): _escape_big.visible = false)
+
+
+## About to be spotted: a pulsing glow at the screen edge towards the watcher, and a
+## blip that speeds up as the meter fills.
+func _update_warning(cam: Camera3D, st: Dictionary, delta: float) -> void:
+	var on: bool = st.get("state", "") == "class" and bool(st.get("seen", false)) and float(st.get("sus", 0.0)) >= 70.0 and cam != null
+	if OS.get_cmdline_user_args().has("--warn") and cam != null:  # dev: screenshot the warning
+		st = {"sus": 90.0, "watch_pos": cam.global_position + cam.global_transform.basis.x * 5.0 - cam.global_transform.basis.z * 2.0}
+		on = true
+	_edge.t += delta
+	if not on:
+		_edge.strength = move_toward(_edge.strength, 0.0, delta * 3.0)
+		_edge.queue_redraw()
+		return
+	var to: Vector3 = (st.get("watch_pos", Vector3.ZERO) as Vector3) - cam.global_position
+	var basis := cam.global_transform.basis
+	_edge.angle = atan2(to.dot(basis.x), to.dot(-basis.z))
+	var k := clampf((float(st.sus) - 70.0) / 30.0, 0.0, 1.0)
+	_edge.strength = move_toward(_edge.strength, 0.4 + 0.6 * k, delta * 4.0)
+	_edge.queue_redraw()
+	_warn_beep -= delta
+	if _warn_beep <= 0.0:
+		_warn_beep = lerpf(0.55, 0.15, k)
+		Sfx.play("blip", -8.0, 1.0 + k)
+
+
 func toast(text: String, color := Color.WHITE) -> void:
 	_toast.text = text
 	_toast.add_theme_color_override("font_color", color)
@@ -2091,6 +2296,11 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 		close_questions()
 	_refresh_phone(director, me, st, delta)
 	_update_route(director, me, st)
+	_update_warning(cam, st, delta)
+	var heat := int(director.world.get("heat", 1))
+	var ev := str(Network.round_rules.get("event", ""))
+	_heat_label.text = "HEAT %d/4%s" % [heat, "   " + Rules.event_name(ev) if ev != "" else ""]
+	_heat_label.add_theme_color_override("font_color", [Color("7fe0a0"), Color("ffd24a"), Color("ff9a4a"), Color("ff5a5a")][clampi(heat - 1, 0, 3)])
 	_refresh_shop(director, me, st, delta)
 	var sus: float = st.sus
 	_update_danger(delta, st)
@@ -2161,6 +2371,8 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 					_banner.visible = false
 			elif alarm_left > 0.0:
 				_show_banner("FIRE ALARM!  Staff at the plaza  %s" % _clock(alarm_left), Color("e0524f"))
+			elif float(director.world.get("party_until", -100.0)) > now:
+				_show_banner("CAKE TIME!  Staff are at the canteen  %s" % _clock(float(director.world.party_until) - now), Color("d65ba0"))
 			elif passing > 0.0 and me != null and _campus.room_of(me.global_position) != room:
 				_show_banner("CLASS CHANGE!  Go to %s  (%s)   %s" % [Network.CLASSROOMS[room], _floor_name(_campus.level_of(Vector3(0, float(_campus.classes[room].y), 0))).capitalize(), _clock(passing)], Color("3f86a8"))
 			elif st.get("returning", false):
@@ -2237,14 +2449,26 @@ func _refresh_quests(st: Dictionary) -> void:
 		l.add_theme_font_size_override("font_size", 14)
 		_quests.add_child(l)
 	var head: Label = _quests.get_child(0)
-	head.text = "SIDE QUESTS"
-	head.modulate = Color(1, 1, 1, 0.7)
+	var done := 0
+	for q in quests:
+		if q.done:
+			done += 1
+	head.text = "QUEST CHAIN  %d/%d%s" % [done, quests.size(), "   DONE! Walk out a gate" if done == quests.size() else ""]
+	head.modulate = Color(1, 1, 1, 0.7) if done < quests.size() else Color(1, 0.85, 0.3)
+	var current := done  # quests are done in order
 	for i in quests.size():
 		var q: Dictionary = quests[i]
 		var l: Label = _quests.get_child(i + 1)
 		var text: String = preload("res://scenes/world/director.gd").QUESTS.get(q.id, q.id)
-		l.text = ("[x]  " if q.done else "[  ]  ") + text
-		l.add_theme_color_override("font_color", Color("7fe0a0") if q.done else Color.WHITE)
+		if q.done:
+			l.text = "[x]  " + text
+			l.add_theme_color_override("font_color", Color("7fe0a0"))
+		elif i == current:
+			l.text = "> %d.  %s" % [i + 1, text]
+			l.add_theme_color_override("font_color", Color("ffd24a"))
+		else:
+			l.text = "   %d.  %s" % [i + 1, "(locked: finish the one above)"]
+			l.add_theme_color_override("font_color", Color(1, 1, 1, 0.4))
 
 
 func _refresh_inventory(st: Dictionary) -> void:
@@ -2362,12 +2586,31 @@ func _show_results(results: Array) -> void:
 		var line := Label.new()
 		var fate := "ESCAPED in %s" % _clock(r.time) if r.escaped else "still on campus"
 		var helped := ", helped %d×" % int(r.assists) if int(r.get("assists", 0)) > 0 else ""
-		line.text = "%d.  %s   —   %d pts   (%s, %d quests, tests %d, caught %d×%s)" % [rank, r.name, r.score, fate, r.quests, int(r.get("tests", 0)), r.caught, helped]
+		var extras := ""
+		if bool(r.get("won", false)):
+			extras += "  RACE WINNER!"
+		if bool(r.get("chain", false)):
+			extras += "  chain done"
+		line.text = "%d.  %s   —   %d pts   (%s, %d quests, style %d, caught %d×%s)%s" % [rank, r.name, r.score, fate, r.quests, int(r.get("style", 0)), r.caught, helped, extras]
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.custom_minimum_size.x = 820
 		line.add_theme_font_size_override("font_size", 20 if rank == 1 else 17)
 		line.add_theme_color_override("font_color", Color("ffc93c") if rank == 1 else Color.WHITE)
 		_end_list.add_child(line)
 		rank += 1
+	if not results.is_empty() and bool(results[0].get("class_bonus", false)):
+		var bonus := _outlined("THE WHOLE CLASS ESCAPED!  +50% for everyone", 20)
+		bonus.add_theme_color_override("font_color", Color("7fe0a0"))
+		_end_list.add_child(bonus)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 30)
+	_end_list.add_child(row)
+	row.add_child(_results_progress(results))
+	row.add_child(_results_highlights(results))
 	_end.visible = true
+	if is_instance_valid(_intro):
+		_intro.queue_free()
+	_escape_big.visible = false
 	# Nothing may cover the results or eat their clicks.
 	if _big:
 		_big.visible = false
@@ -2383,6 +2626,132 @@ func _show_results(results: Array) -> void:
 		_exam.queue_free()
 		_exam = null
 	move_child(_end, get_child_count() - 1)
+
+
+## Your progress this round (applied to the saved profile once): XP, stars, best time, Rs saved.
+func _results_progress(results: Array) -> Control:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 5)
+	col.custom_minimum_size.x = 430
+	var mine := {}
+	for r in results:
+		if int(r.get("id", -1)) == multiplayer.get_unique_id():
+			mine = r
+	if mine.is_empty():
+		return col
+	var sum: Dictionary = Profile.last_summary
+	if not _profile_done:
+		_profile_done = true
+		sum = Profile.apply_round(mine, Network.current_map, Network.round_rules)
+	var head := _outlined("YOUR PROGRESS", 18)
+	head.add_theme_color_override("font_color", Color("9fd8ff"))
+	col.add_child(head)
+	var after: Array = sum.get("after", Profile.level_of(Profile.xp))
+	var before: Array = sum.get("before", after)
+	var lvl := Label.new()
+	lvl.add_theme_font_size_override("font_size", 17)
+	lvl.text = "Level %d  ·  %s   (+%d XP)" % [int(after[0]), Profile.rank_title(), int(sum.get("xp", 0))]
+	col.add_child(lvl)
+	var bar_bg := ColorRect.new()
+	bar_bg.color = Color(1, 1, 1, 0.12)
+	bar_bg.custom_minimum_size = Vector2(400, 14)
+	col.add_child(bar_bg)
+	var fill := ColorRect.new()
+	fill.color = Color("7fe0a0")
+	fill.size = Vector2(400.0 * float(before[1]) / float(before[2]), 14)
+	bar_bg.add_child(fill)
+	var tw := create_tween()
+	if int(after[0]) > int(before[0]):
+		tw.tween_property(fill, "size:x", 400.0, 0.7)
+		tw.tween_callback(func(): fill.size.x = 0.0)
+	tw.tween_property(fill, "size:x", 400.0 * float(after[1]) / float(after[2]), 0.9)
+	if int(after[0]) > int(before[0]):
+		var up := _outlined("LEVEL UP!  Level %d" % int(after[0]), 20)
+		up.add_theme_color_override("font_color", Color("ffd24a"))
+		col.add_child(up)
+	if str(sum.get("rank_up", "")) != "":
+		var ru := _outlined("NEW RANK: %s  (new name tag in the lobby!)" % str(sum.rank_up), 18)
+		ru.add_theme_color_override("font_color", Color("ff9a4a"))
+		col.add_child(ru)
+	for line: Array in sum.get("lines", []):
+		var l := Label.new()
+		l.text = "+%d XP   %s" % [int(line[1]), str(line[0])]
+		l.add_theme_font_size_override("font_size", 14)
+		l.add_theme_color_override("font_color", Color("ffd24a") if "STAR" in str(line[0]) or "DAILY" in str(line[0]) else Color(1, 1, 1, 0.8))
+		col.add_child(l)
+	var stars := StarRow.new()
+	stars.custom_minimum_size = Vector2(130, 36)
+	stars.got = Profile.stars(Network.current_map)
+	stars.fresh = sum.get("new_stars", [])
+	var star_row := HBoxContainer.new()
+	star_row.add_child(stars)
+	var best := Label.new()
+	var bt := Profile.best_time(Network.current_map)
+	best.text = ("Best escape %s%s" % [_clock(bt), "   NEW RECORD!" if sum.get("record", false) else ""]) if bt >= 0.0 else "No escape here yet"
+	best.add_theme_font_size_override("font_size", 14)
+	best.add_theme_color_override("font_color", Color("7fe0a0") if sum.get("record", false) else Color(1, 1, 1, 0.75))
+	star_row.add_child(best)
+	col.add_child(star_row)
+	var bank := Label.new()
+	bank.text = "+Rs %d saved  ·  bank Rs %d (spend it in the lobby)" % [int(sum.get("bank", 0)), Profile.bank]
+	bank.add_theme_font_size_override("font_size", 14)
+	bank.add_theme_color_override("font_color", Color("ffd24a"))
+	col.add_child(bank)
+	for id in sum.get("unlocked", []):
+		var un := _outlined("NEW MAP UNLOCKED: %s!" % Maps.title(int(id)), 18)
+		un.add_theme_color_override("font_color", Color("7fe0a0"))
+		col.add_child(un)
+	var next := Label.new()
+	next.text = "NEXT: " + Profile.next_goal()
+	next.add_theme_font_size_override("font_size", 15)
+	next.add_theme_color_override("font_color", Color("ff9a4a"))
+	col.add_child(next)
+	return col
+
+
+## Fun facts from the round, for comparing with friends.
+func _results_highlights(results: Array) -> Control:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 5)
+	col.custom_minimum_size.x = 380
+	var head := _outlined("HIGHLIGHTS", 18)
+	head.add_theme_color_override("font_color", Color("9fd8ff"))
+	col.add_child(head)
+	var lines := []
+	var best := func(key: String, lowest: bool) -> Dictionary:
+		var pick := {}
+		for r in results:
+			if pick.is_empty() or (float(r.get(key, 0)) < float(pick.get(key, 0)) if lowest else float(r.get(key, 0)) > float(pick.get(key, 0))):
+				pick = r
+		return pick
+	var close: Dictionary = best.call("closest", true)
+	if not close.is_empty() and float(close.closest) < 50.0:
+		lines.append("Closest call: %s slipped away from %s at %.1f m" % [close.name, close.closest_who, float(close.closest)])
+	var ghost: Dictionary = best.call("longest_unseen", false)
+	if not ghost.is_empty() and float(ghost.longest_unseen) >= 10.0:
+		lines.append("Ghost: %s, %d s out of class unseen" % [ghost.name, int(ghost.longest_unseen)])
+	var combo: Dictionary = best.call("combo_best", false)
+	if not combo.is_empty() and int(combo.combo_best) >= 2:
+		lines.append("Best combo: %s, x%d" % [combo.name, int(combo.combo_best)])
+	var paper: Dictionary = best.call("best_distraction", false)
+	if not paper.is_empty() and int(paper.best_distraction) >= 1:
+		lines.append("Best distraction: %s's paper ball pulled %d staff" % [paper.name, int(paper.best_distraction)])
+	var regular: Dictionary = best.call("caught", false)
+	if not regular.is_empty() and int(regular.caught) >= 1:
+		lines.append("Detention regular: %s (%d×)" % [regular.name, int(regular.caught)])
+	for r in results:
+		if bool(r.get("speedy", false)):
+			lines.append("Speed bonus: %s escaped under 3:00" % r.name)
+	if lines.is_empty():
+		lines.append("A quiet day at the academy.")
+	for text in lines:
+		var l := Label.new()
+		l.text = text
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 380
+		l.add_theme_font_size_override("font_size", 14)
+		col.add_child(l)
+	return col
 
 
 func _show_banner(text: String, color: Color) -> void:

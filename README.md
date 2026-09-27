@@ -104,8 +104,9 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - **Music room:** play the piano or drums (E, then keys 1-8). Everyone hears it, and so do the staff.
 - **Washrooms:** use the toilet for a no-questions washroom break (-25 suspicion, 20 s to wander back), or hide an
   item in the cistern and fish it out later. Getting caught confiscates the canteen key, medical notes and hall passes.
-- **Detention:** 20 s, and 5 s longer each time you're caught. The lines paper opens by itself: just type the
-  sentence exactly and press Enter (5 s off each), then type the next one. A wrong line flashes red, the paper
+- **Detention:** starts small and grows with every catch in a round: 8 s, 15 s, 25 s, then 35 s (x0.5 on First
+  Day, where the very first catch is only a warning; x1.2 on Downtown). The lines paper opens by itself: just type the
+  sentence exactly and press Enter (5 s off each, only 3 s from the 4th catch on), then type the next one. A wrong line flashes red, the paper
   shakes and the line is wiped: try again. Afterwards you walk back to class yourself (60 s grace); your teacher scolds you and gets
   stricter (notices more, less wiggle room at your seat). Sit nicely for 45 s to calm them down a notch.
 - **Controls:** Settings → CONTROLS to rebind any key.
@@ -132,9 +133,36 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - Fire alarm (verandah pillars): staff evacuate to the plaza for 25 s. 150 s cooldown.
 - Escaped? Your phone's **Help Out** app keeps you in the game: sit a friend's test on your phone and text them the
   answers (their test counts at least your score), prank-call the staff chasing them (10 s distraction), send
-  money, or order them a samosa (Rs 15). Each help is +40 points. You can also throw paper balls back over the wall.
-- Score: escape +500 plus time left, side quests +150 each, caught -100, spotted -25. Round lengths: 5, 8, 12
-  or 20 minutes (the big maps take a while).
+  money, order them a samosa (Rs 15), ring the bell at the gate (the 3 nearest staff come out to look) or WATCH a
+  friend from over their shoulder (Space to come back). Each help is +40 points. You can also throw paper balls
+  back over the wall.
+- Score: escape +500 plus time left, side quests +150 each, the whole chain +200, style points, caught -100,
+  spotted -25. Round lengths: 5, 8, 12 or 20 minutes (the big maps take a while).
+
+## Progress, quests and challenges
+- **Your profile** (saved on your PC): XP from every round, levels and ranks (Fresher, Backbencher, Proxy King,
+  Canteen Legend, Bunk Master: each rank unlocks a name-tag colour), 3 stars per map (escape / all quests / escape
+  without a detention) and your best escape time. The results screen shows the XP bar, new stars, records, what
+  you unlocked and what to go for next.
+- **Maps open in order:** escape First Day to open Grand Campus, and so on (or reach level 3, 6, 9, 12).
+  "Random" only picks maps the host has opened.
+- **Rs you have left at the final bell go in the bank.** Spend it in the lobby's character creator: locked (gold)
+  items show their price (caps, shades, blazers, lab coats, gold / neon / fire name tags...).
+- **Quest chain:** every round starts with the same opening quest (answer the register, then slip out of class),
+  then a medium one (co-op ones with friends about: boost a friend, answer the register for a friend), then a risky
+  one (the exam paper, the principal's car). Finish all three: +200 and 40 s to walk out through a gate.
+- **Heat** rises through the round (and with every catch or fire alarm): 1 teachers only, 2 the prefect and
+  caretaker start patrolling, 3 sharper CCTV plus the proctor and vice principal upstairs, 4 lockdown (no chai
+  breaks, everyone jumpier). Shown under your suspicion meter.
+- **Style:** CLOSE CALL (get out of sight after passing 80% suspicion), SILENT (25 m out of class unseen), SHOOK
+  THEM OFF (lose a chaser), PROXY, QUEST. Each one raises your combo (x2, x3...) until someone spots you.
+- **About to be spotted:** the screen edge glows towards whoever is watching and a blip speeds up.
+- **Round events** (6 in 10 rounds): Surprise Inspection, Principal's Birthday (cake at the canteen halfway),
+  Rain, Power Cut (no CCTV, dark corridors), Exam Week (tests sooner, double marks).
+- **Daily challenge** (pick it as the map): the same map, event and rule for everyone that day (no hall passes /
+  start broke / escape under 3:00). Escape for +300 XP and Rs 100, once a day.
+- **Modes:** Class (everyone out = +50% for everyone) or Race (first one out wins +300 and ends the round; paper
+  balls that land on a rival make the staff look at them).
 
 ## Develop
 Open `project.godot` in Godot 4.4+. Test multiplayer with Debug > Customize Run Instances.
@@ -153,6 +181,8 @@ Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)
 `--session-host=NAME` / `--session-join=NAME` · `--name=X --room=0..3` ·
 `--at=x,z` · `--walk=x,z;!interact;!use1;!proxy;!wait2;!stand;!coin;!counter;!buy:samosa;!give10;!giveslot0;!bump;...`
 (test bot) · `--autoready` · `--no-staff` · `--trace` · `--cam=x,y,z,tx,ty,tz` · `--shot=file.png --shot_delay=S` ·
+`--map=-2` (daily) · `--event=inspection|birthday|rain|power_cut|exam_week|none` · `--mode=race` · `--rule=no_pass|broke|speed` ·
+`--heat4` · `--stylepop` · `--warn` · `--spectate` · `--bell` · `--fresh-profile` (dev runs use `profile_test.cfg`) ·
 `--bigmap` · `--quit-at-end` · `--phone=-1..6` (home / an app) · `--helpbot` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
 bot actions `!ask:0..2` `!examphoto`
 

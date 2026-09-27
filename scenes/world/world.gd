@@ -67,6 +67,7 @@ func _ready() -> void:
 	_director.toasted.connect(_hud.toast)
 	_director.effect.connect(_on_effect)
 	_setup_debug_camera()
+	_apply_round_event()
 	Sfx.set_music("calm")
 	Sfx.set_ambience(true)
 
@@ -116,6 +117,7 @@ func _process(delta: float) -> void:
 		_fixed_cam.current = true
 	var me := _players_root.get_node_or_null(str(multiplayer.get_unique_id()))
 	_hud.refresh(_director, me, get_viewport().get_camera_3d(), _npcs_root, _players_root)
+	_update_rain()
 	_update_props()
 	_update_audio()
 	if me and OS.get_cmdline_user_args().has("--trace") and Engine.get_process_frames() % 30 == 0:
@@ -123,6 +125,57 @@ func _process(delta: float) -> void:
 		var t2 := _npcs_root.get_node_or_null("Teacher2")
 		if t2:
 			print("[trace] Teacher2=%s" % t2.global_position)
+
+
+# --- Round events you can see: rain, a power cut ----------------------------------------------
+
+var _power_cut := false
+var _rain: CPUParticles3D
+
+
+func _apply_round_event() -> void:
+	match str(Network.round_rules.get("event", "")):
+		"power_cut":
+			_power_cut = true
+			for light in find_children("*", "OmniLight3D", true, false):
+				(light as OmniLight3D).light_energy *= 0.15
+			_env.ambient_light_energy *= 0.6
+		"rain":
+			_sun.light_energy *= 0.55
+			_rain = CPUParticles3D.new()
+			_rain.amount = 900
+			_rain.lifetime = 0.9
+			_rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+			_rain.emission_box_extents = Vector3(18, 0.5, 18)
+			_rain.direction = Vector3(0.1, -1, 0)
+			_rain.spread = 3.0
+			_rain.initial_velocity_min = 22.0
+			_rain.initial_velocity_max = 26.0
+			_rain.gravity = Vector3(0, -10, 0)
+			var drop := QuadMesh.new()
+			drop.size = Vector2(0.03, 0.6)
+			var mat := StandardMaterial3D.new()
+			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.albedo_color = Color(0.8, 0.88, 1.0, 0.45)
+			mat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+			drop.material = mat
+			_rain.mesh = drop
+			add_child(_rain)
+
+
+## Rain follows the camera, and stops when there's a roof overhead.
+func _update_rain() -> void:
+	if _rain == null:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	_rain.global_position = cam.global_position + Vector3(0, 10, 0)
+	if Engine.get_process_frames() % 10 == 0:
+		var hit := get_world_3d().direct_space_state.intersect_ray(
+			PhysicsRayQueryParameters3D.create(cam.global_position, cam.global_position + Vector3(0, 30, 0), 1))
+		_rain.emitting = hit.is_empty()
 
 
 ## Things every peer derives from replicated Director state.
@@ -142,7 +195,7 @@ func _update_props() -> void:
 	for cam in campus.cctv:
 		var node: Node3D = cam.node
 		node.rotation.y = _director.cctv_yaw(cam, t)
-		node.get_child(0).get_node("Led").visible = int(t * 2.0) % 2 == 0
+		node.get_child(0).get_node("Led").visible = int(t * 2.0) % 2 == 0 and not _power_cut
 	_update_coins(t)
 	var gate_open: bool = float(_director.world.gate_until) > t
 	var gate: Node3D = campus.service_gate
@@ -200,6 +253,12 @@ func _update_audio() -> void:
 
 
 func _on_effect(kind: String, pos: Vector3, extra: String) -> void:
+	_hud.on_effect(kind, pos, extra)
+	if kind == "win":  # look back at the university you just escaped
+		var me := _players_root.get_node_or_null(str(multiplayer.get_unique_id()))
+		var a: Rect2 = campus.academic_rect
+		if me:
+			me.escape_shot(Vector3(a.get_center().x, 4.0, a.get_center().y))
 	match kind:
 		"bell":
 			Sfx.play("bell")

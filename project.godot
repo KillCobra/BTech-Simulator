@@ -20,6 +20,7 @@ GameInput="*res://autoload/game_input.gd"
 Settings="*res://autoload/settings.gd"
 Sfx="*res://autoload/sfx.gd"
 Network="*res://autoload/network_manager.gd"
+Profile="*res://autoload/profile.gd"
 
 [display]
 
