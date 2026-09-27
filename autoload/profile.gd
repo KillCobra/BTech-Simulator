@@ -262,11 +262,13 @@ func apply_round(row: Dictionary, map_id: int, rules: Dictionary) -> Dictionary:
 
 ## What to chase next, for the results screen and the lobby.
 func next_goal() -> String:
-	for id in range(1, MAP_COUNT):
+	var playable: Array = preload("res://scenes/world/maps/maps.gd").PLAYABLE
+	for k in range(1, playable.size()):
+		var id: int = playable[k]
 		if not map_unlocked(id):
 			var names := ["First Day", "Grand Campus", "Whispering Pines", "Lagoon Island", "Downtown Campus"]
-			return "Escape %s to unlock %s" % [names[id - 1], names[id]]
+			return "Escape %s to unlock %s" % [names[int(playable[k - 1])], names[id]]
 	var nr := next_rank()
 	if not nr.is_empty():
 		return "Reach level %d to become %s" % [int(nr[0]), str(nr[1])]
-	return "Collect all 15 stars"
+	return "Collect all %d stars" % (3 * playable.size())

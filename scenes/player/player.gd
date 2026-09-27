@@ -445,6 +445,11 @@ func _interact() -> void:
 			_request("talk", {"npc": _target.name})
 		"friend":
 			_request("boost", {"friend": _target.id})
+		"give":
+			if _target.has("cash"):
+				_request("give", {"to": _target.id, "cash": int(_target.cash)})
+			else:
+				_request("give", {"to": _target.id, "slot": int(_target.slot)})
 
 
 ## Asks the teacher a question (picked on the HUD): hand up for a few seconds.
@@ -469,20 +474,34 @@ func _open_shop() -> void:
 		_request("interact", {"i": counter})
 
 
-## Picks what [E] would act on: a crouching friend, a staff member, or an object.
+## Picks what [E] would act on: a friend (boost, or hand them something), a staff
+## member, or an object.
 func _find_target() -> Dictionary:
 	var fwd := -_camera.global_transform.basis.z
 	fwd.y = 0
 	fwd = fwd.normalized()
 	var me := global_position
 	for p in get_parent().get_children():
-		if p == self or not p.crouching:
+		if p == self or p.hidden:
 			continue
 		var to_friend: Vector3 = p.global_position - me
 		to_friend.y = 0
-		if to_friend.length() < 1.5 and absf(p.global_position.y - me.y) < 1.0 \
-				and (to_friend.length() < 0.4 or fwd.dot(to_friend.normalized()) > 0.5):
+		if to_friend.length() >= 1.5 or absf(p.global_position.y - me.y) >= 1.0 \
+				or not (to_friend.length() < 0.4 or fwd.dot(to_friend.normalized()) > 0.5):
+			continue
+		if p.crouching:
 			return {"type": "friend", "id": int(str(p.name)), "label": "Get a boost from %s" % p.display_name}
+		# Standing friend: hand over your first item (contraband goes in their bag, so it's
+		# THEIR problem if they're caught), or Rs 10 if your pockets are empty.
+		var st: Dictionary = _director.status.get(int(str(name)), {}) if _director else {}
+		var items: Array = st.get("items", [])
+		if not items.is_empty():
+			var item_name: String = _director.ITEMS.get(items[0], "item")
+			var sneaky: bool = items[0] in _director.CONTRABAND
+			return {"type": "give", "id": int(str(p.name)), "slot": 0,
+				"label": ("Slip the %s into %s's bag" if sneaky else "Give %s the %s") % ([item_name, p.display_name] if sneaky else [p.display_name, item_name])}
+		if int(st.get("cash", 0)) >= 10:
+			return {"type": "give", "id": int(str(p.name)), "cash": 10, "label": "Give %s Rs 10" % p.display_name}
 	if _world:
 		for npc in _world.get_node("Npcs").get_children():
 			if npc.display_name == "" or npc.role == "extra":

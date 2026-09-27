@@ -49,26 +49,30 @@ const ALARM_COOLDOWN := 150.0
 const GATE_OPEN_TIME := 12.0
 const PICKUP_RESPAWN := 45.0
 const MAX_ITEMS := 3
-# [name, uses she/her-style look (no moustache, longer hair)]
-const TEACHERS := [["Ms. Okafor", true], ["Mr. Tanaka", false], ["Dr. Alvarez", false], ["Mrs. Iyer", true]]
+# [name, uses she/her-style look (no moustache, longer hair), what everyone learns about them]
+# Index = classroom. Each one plays differently (see TEACHER_BRAINS and the excuses).
+const TEACHERS := [
+	["Ms. Okafor", true, "hard to fool, soft on good marks"],
+	["Mr. Tanaka", false, "eagle eyes, never leaves his room"],
+	["Dr. Alvarez", false, "loves questions, hears nothing"],
+	["Mrs. Iyer", true, "hears everything, believes you once"],
+]
 const SHOUTS := ["Hey! Stop right there!", "Where do you think you're going?!", "Come back here!", "You! Which class?!"]
 
 const ITEMS := {
 	"hall_pass": "Hall Pass", "samosa": "Samosa", "medical_note": "Medical Note",
-	"canteen_key": "Canteen Key", "library_book": "Library Book", "detention_ticket": "Detention Skip",
+	"canteen_key": "Canteen Key", "library_book": "Library Book",
 }
 # Canteen shop (Pappu Uncle's counter). Prices in rupees.
-const SHOP := {"samosa": 10, "hall_pass": 40, "medical_note": 70, "detention_ticket": 90}
+const SHOP := {"samosa": 10, "hall_pass": 40, "medical_note": 70}
 const SHOP_ABOUT := {
 	"samosa": "Eat it, or bribe staff close by",
 	"hall_pass": "Walk the corridors without trouble",
 	"medical_note": "Show it to a gate guard to walk out",
-	"detention_ticket": "Caught? Flash it and skip detention",
 }
 # Upgrades: [name, what it does, price per level].
 const UPGRADES := {
 	"pass": ["Signed passes", "+15 s on every hall pass", [50, 80, 120]],
-	"shoes": ["Soft shoes", "Staff hear your sprinting from half as far", [100]],
 }
 const START_CASH := 30
 const COIN_COUNT := 10
@@ -132,6 +136,10 @@ var _started := false
 var _rng := RandomNumberGenerator.new()
 var _pending_staff: Array = []  # [heat, Callable]: patrols that come on duty as the heat rises
 var _rules: Dictionary = {}     # this round's rules (Network.round_rules)
+## Moments: everything notable that happened to someone ({t, id, kind, other}). They
+## feed the end-of-round awards, and a dev report of stretches where nothing happened.
+var _moments: Array = []
+var _stats := {}  # player name -> counters for the awards (host only; kept across a rejoin)
 
 
 func _ready() -> void:
@@ -297,6 +305,8 @@ func _schedule_period(p: int) -> void:
 		rooms[i].attendance_in = settle + plen * 0.28 + i * 6.0  # once per period
 		var test_at := 0.42 if _event() == "exam_week" else 0.62  # exam week: tests come sooner
 		rooms[i].exam_at = minf(elapsed + settle + plen * test_at + i * 4.0, elapsed + plen - EXAM_TIME - 10.0)
+		if _fresh():
+			rooms[i].exam_at = 99999.0  # someone's very first round: no surprise tests yet
 		rooms[i].called = []  # who has answered the roll this period
 
 
@@ -502,16 +512,39 @@ func _new_status(id: int) -> Dictionary:
 	var items := []
 	return {"sus": 0.0, "state": "class", "seen": false, "caught": 0, "spotted": 0, "time": 0.0, "timer": 0.0,
 		"bunking": false, "items": items, "quests": quests, "pass_until": -1.0, "gate_pass_until": -1.0, "score": 0,
-		"catches": 0, "warnings": 0, "chain": false, "style": 0, "combo": 0, "combo_best": 0, "peak": false, "calm_t": 0.0,
+		"catches": 0, "warnings": 0, "chain": false, "style": 0, "peak": false, "calm_t": 0.0,
 		"silent_m": 0.0, "last_pos": Vector3.ZERO, "unseen_run": 0.0, "longest_unseen": 0.0, "closest": 99.0,
 		"closest_who": "", "best_distraction": 0, "present_period": -1, "watch_pos": Vector3.ZERO,
 		"grabbed": false, "shoves": 0, "seat_idx": 0, "seat": Vector3.ZERO, "strikes": 0, "good_time": 0.0,
 		"returning": false, "return_until": -1.0, "essay_line": 0, "exam_key": "", "exam_total": 0, "exams": 0,
 		"exams_missed": 0, "exam_photo": false, "cash": 0 if _rule() == "broke" else START_CASH, "earned": 0,
-		"upgrades": {"pass": 0, "shoes": 0},
-		"exam_in_at": -1.0, "exam_paper": "", "exam_deadline": -1.0, "wait_since": -1.0, "badges": {},
+		"upgrades": {"pass": 0},
+		"exam_in_at": -1.0, "exam_paper": "", "exam_deadline": -1.0, "wait_since": -1.0,
 		"settle_until": -1.0, "had_pass": false, "pass_late": false, "was_in_room": true,
 		"helper_answers": -1, "helper_from": "", "assists": 0, "helped": {}}
+
+
+## Something happened to `id` (with `other` involved, a peer id or -1).
+func _moment(kind: String, id: int, other := -1) -> void:
+	_moments.append({"t": elapsed, "id": id, "kind": kind, "other": other})
+
+
+## Adds `by` to one of `id`'s award counters (see _awards). "max:" keys keep the biggest value.
+func _stat(id: int, key: String, by := 1.0) -> void:
+	if not status.has(id):
+		return
+	var s: Dictionary = _stats.get_or_add(_name(id), {})
+	if key.begins_with("max:"):
+		s[key] = maxf(float(s.get(key, 0.0)), by)
+	else:
+		s[key] = float(s.get(key, 0.0)) + by
+
+
+## "with Mrs. Iyer: hears everything, believes you once" (HUD period card, phone).
+func teacher_line(room: int) -> String:
+	if room < 0 or room >= TEACHERS.size():
+		return ""
+	return "with %s: %s" % [TEACHERS[room][0], TEACHERS[room][2]]
 
 
 func _log(text: String) -> void:
@@ -664,17 +697,20 @@ func _pay(id: int, amount: int, why: String) -> void:
 		_fx.rpc_id(id, "coin", Vector3.ZERO, "")
 
 
-## A stylish move: points times the combo (which grows with every move and
-## resets when you're spotted). The HUD pops it up.
+## A stylish move: a few points and a pop-up by the crosshair.
 func _style(id: int, kind: String) -> void:
 	if not status.has(id) or not Rules.STYLE.has(kind):
 		return
 	var st: Dictionary = status[id]
-	st.combo = mini(int(st.combo) + 1, Rules.COMBO_MAX)
-	st.combo_best = maxi(int(st.combo_best), int(st.combo))
-	var pts: int = int(Rules.STYLE[kind][1]) * int(st.combo)
+	var pts: int = int(Rules.STYLE[kind][1])
 	st.style = int(st.style) + pts
-	_fx.rpc_id(id, "style", Vector3.ZERO, "%s|%d|%d" % [Rules.STYLE[kind][0], pts, int(st.combo)])
+	_fx.rpc_id(id, "style", Vector3.ZERO, "%s|%d" % [Rules.STYLE[kind][0], pts])
+
+
+## A player's first round (see Network.start_game): the basics only, no tests,
+## no round event, the school never gets stricter than heat 2.
+func _fresh() -> bool:
+	return bool(_rules.get("fresh", false))
 
 
 func _event() -> String:
@@ -829,6 +865,8 @@ func _on_prank_call(id: int, to: int) -> void:
 	_tell(id, "Prank call! %s is busy for 10 s. +%d" % [pick.npc.display_name, ASSIST_POINTS], Color("7fe0a0"))
 	_tell(to, "%s prank-called %s. GO!" % [_name(id), pick.npc.display_name], Color("ffd24a"))
 	_log("%s prank-called %s." % [_name(id), pick.npc.display_name])
+	_moment("prank", id, to)
+	_moment("saved", to, id)
 
 
 ## Samosa delivery to a friend inside, paid by the helper.
@@ -1040,6 +1078,7 @@ func _on_interact(id: int, p: Node3D, index: int) -> void:
 				_tell(id, "The alarm was just pulled. Wait %ds." % int(world.alarm_ready - elapsed), Color("ffb37a"))
 				return
 			_start_alarm()
+			_moment("alarm", id)
 			if _seen_by_anyone(p):
 				st.sus = minf(99.0, st.sus + 40.0)
 				_log("%s was seen pulling the fire alarm!" % _name(id))
@@ -1151,9 +1190,12 @@ func _on_use(id: int, p: Node3D, slot: int) -> void:
 				if near.target != -1:
 					_end_chase(near)
 				_log("%s bribed %s with a samosa." % [_name(id), near.npc.display_name])
+				_moment("bribe", id)
+				_stat(id, "samosas")
 			else:
 				_tell(id, "Crunchy, spicy, perfect.", Color("7fe0a0"))
 				_complete(id, "samosa")
+				_stat(id, "samosas")
 		"medical_note":
 			var guard := _nearest_brain(p.global_position, 5.0, ["gate"])
 			if not guard.is_empty() and guard.target != id:
@@ -1170,8 +1212,6 @@ func _on_use(id: int, p: Node3D, slot: int) -> void:
 				_tell(id, "Use it at the service gate in the east wall.", Color("ffb37a"))
 		"library_book":
 			_tell(id, "Return it at the library desk.", Color("9fd8ff"))
-		"detention_ticket":
-			_tell(id, "Keep it in your pocket: it's used automatically if you get caught.", Color("9fd8ff"))
 
 
 ## Paper ball: flies along a real arc and stops at the first wall, floor or ceiling.
@@ -1246,14 +1286,11 @@ func _on_exam(id: int, p: Node3D, room: int, exam_id: int, score: int) -> void:
 	st.exams = int(st.exams) + 1
 	_tell(id, "%s test: %d/100" % [SUBJECTS[room], score], Color("7fe0a0") if score >= 50 else Color("ffb37a"))
 	_log("%s scored %d in the %s test." % [_name(id), score, SUBJECTS[room]])
+	_moment("test", id)
 	if score >= 20:
 		_pay(id, score / 5, "for the test")
 	if score == 100:
-		var badges: Dictionary = st.badges
-		badges[str(room)] = int(badges.get(str(room), 0)) + 1
-		_fx.rpc_id(id, "badge", Vector3.ZERO, str(room))
-		_tell(id, "MERIT BADGE: %s!  (x%d)" % [SUBJECTS[room], int(badges[str(room)])], Color("ffd24a"))
-		_log("%s earned a %s merit badge!" % [_name(id), SUBJECTS[room]])
+		_log("%s got full marks in %s!" % [_name(id), SUBJECTS[room]])
 
 
 ## Detention lines: copy the sentence exactly, get out sooner.
@@ -1325,6 +1362,7 @@ func _on_boost(id: int, p: Node3D, friend_id: int) -> void:
 		return
 	p.launch.rpc_id(id, Vector3(0, 8.2, 0))
 	_fx_all("boost", p.global_position, "")
+	_moment("boost", id, friend_id)
 	_complete(id, "boost")
 	_complete(friend_id, "boost")
 
@@ -1368,6 +1406,7 @@ func _on_shove(id: int, p: Node3D) -> void:
 	elif target.role != "extra":
 		st.sus = minf(100.0, st.sus + 55.0)  # now they're definitely suspicious
 	_log("%s shoved %s!" % [_name(id), npc.display_name])
+	_moment("shove", id)
 
 
 ## Nothing solid between a player's chest and someone else's (shoves, grabs).
@@ -1785,6 +1824,7 @@ func _update_player(id: int, p: Node3D, delta: float) -> void:
 				_tell(id, "You're OUT! Phone > HELP OUT: text friends answers, prank-call staff, send money.", Color("7fe0a0"))
 				_fx.rpc_id(id, "win", Vector3.ZERO, "")
 				_log("%s ESCAPED the university!" % _name(id))
+				_moment("escaped", id)
 				for b in _brains:
 					if b.target == id:
 						_end_chase(b)
@@ -1811,6 +1851,7 @@ func _style_step(id: int, p: Node3D, st: Dictionary, delta: float) -> void:
 			st.peak = false
 			if st.state == "class":
 				_style(id, "close_call")
+				_moment("close_call", id)
 	var out: bool = st.state == "class" and campus.room_of(pos) != current_room(id) and elapsed > float(world.passing_until) \
 			and elapsed > float(st.pass_until)
 	if out and not st.seen and not p.hidden:
@@ -1921,7 +1962,7 @@ func _end_round() -> void:
 		st.score = score
 		list.append({"id": id, "name": _name(id), "score": score, "escaped": st.state == "escaped", "time": st.time,
 			"quests": done, "caught": st.caught, "spotted": st.spotted, "tests": int(st.get("exam_total", 0)), "assists": int(st.get("assists", 0)),
-			"cash": int(st.cash), "style": int(st.style), "combo_best": int(st.combo_best), "warnings": int(st.warnings),
+			"cash": int(st.cash), "style": int(st.style), "warnings": int(st.warnings),
 			"chain": bool(st.chain), "speedy": speedy, "won": won, "closest": float(st.closest), "closest_who": str(st.closest_who),
 			"longest_unseen": float(st.longest_unseen), "best_distraction": int(st.best_distraction), "class_bonus": false})
 	# Class mode: everyone out (2+ players) = +50% for everyone.
@@ -1940,14 +1981,36 @@ func _end_round() -> void:
 		b.npc.alert = 0
 	_fx_all("bell", Vector3.ZERO, "end")
 	_log("The final bell rang!")
+	_report_moments()
 	if OS.get_cmdline_user_args().has("--quit-at-end"):  # dev/CI: stop once the round is over
 		get_tree().create_timer(1.0).timeout.connect(get_tree().quit)
+
+
+## Dev report: how often something happened to each player, and the longest stretch
+## where nothing did (the thing to design away: 30 s of nothing is 30 s of boredom).
+func _report_moments() -> void:
+	for id in status:
+		var times: Array = [0.0]
+		for m: Dictionary in _moments:
+			if int(m.id) == int(id):
+				times.append(float(m.t))
+		times.append(elapsed)
+		var longest := 0.0
+		var quiet := 0
+		for k in range(1, times.size()):
+			var gap: float = float(times[k]) - float(times[k - 1])
+			longest = maxf(longest, gap)
+			if gap > 45.0:
+				quiet += 1
+		print("[moments] %s: %d moments in %ds, longest quiet stretch %ds, %d quiet stretches over 45 s" 				% [_name(id), times.size() - 2, int(elapsed), int(longest), quiet])
 
 
 ## Heat: time, catches and fire alarms make the school stricter. New patrols come on duty.
 func _update_heat(quiet: bool) -> void:
 	var floor_heat := 2 if _event() == "inspection" else 1
 	var heat := Rules.heat_for(elapsed / maxf(1.0, round_time), int(world.heat_bumps), floor_heat)
+	if _fresh():
+		heat = mini(heat, 2)
 	if OS.get_cmdline_user_args().has("--heat4"):  # dev
 		heat = 4
 	if heat > int(world.heat) or quiet:
@@ -2076,7 +2139,7 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 		var ears: float = NOISE_RADIUS * (1.6 if npc.name == "Librarian" else 1.0) * (1.5 if _event() == "rain" else 1.0)
 		for id in players:
 			var p: Node3D = players[id]
-			var heard: float = ears * (0.5 if int(status[id].upgrades.get("shoes", 0)) > 0 else 1.0)
+			var heard: float = ears
 			if p.sprinting and status[id].state in ["class", "chased"] \
 					and p.global_position.distance_to(npc.global_position) < heard \
 					and absf(p.global_position.y - npc.global_position.y) < FLOOR_REACH:
@@ -2221,6 +2284,7 @@ func _attendance_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		if b.get("proxied", false):
 			npc.say("...Present!  (Hmm, you sound different.)", 1.8)
 			_log("%s answered attendance for %s!" % [_name(b.proxied_by), _name(id)])
+			_moment("proxy", int(b.proxied_by), id)
 			_style(int(b.proxied_by), "proxy")
 			_complete(int(b.proxied_by), "proxy")
 		elif status.has(id) and (elapsed < float(status[id].get("return_until", -1.0)) or elapsed < float(status[id].pass_until)):
@@ -2257,6 +2321,9 @@ func _attendance_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 		b.waiting = next
 		b.proxied = false
 		b.timer = 2.2  # window for a friend to answer (R)
+		for other in players:
+			if other != next and status[other].state == "class" and campus.room_of(players[other].global_position) == b.room:
+				_fx.rpc_id(other, "hint_proxy", Vector3.ZERO, _name(next))
 
 
 func _gate_guard(b: Dictionary, delta: float) -> void:
@@ -2427,7 +2494,8 @@ func _start_chase(b: Dictionary, id: int, pos: Vector3) -> void:
 	b.last_seen = pos
 	status[id].state = "chased"
 	status[id].spotted += 1
-	status[id].combo = 0
+	status[id].chase_from = elapsed
+	_moment("spotted", id)
 	status[id].peak = false
 	b.min_dist = 99.0
 	b.npc.alert = 2
@@ -2483,6 +2551,7 @@ func _chase_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 			st.closest_who = str(npc.display_name).get_slice(" (", 0)
 		_end_chase(b)
 		_style(id, "shake_off")
+		_moment("shook_off", id)
 		return
 	# Catching takes a moment: the student is grabbed and can shove free.
 	if dist < CATCH_DIST and (not p.hidden or b.saw_hide) and (p.hidden or _within_reach(p, npc)):
@@ -2517,6 +2586,11 @@ func _end_chase(b: Dictionary) -> void:
 	var id: int = b.target
 	if status.has(id):
 		status[id].grabbed = false
+		var ran: float = elapsed - float(status[id].get("chase_from", elapsed))
+		if ran > 0.0 and status[id].state == "chased":
+			_stat(id, "chase", ran)
+			_stat(id, "max:chase", ran)
+		status[id].chase_from = elapsed
 		# Fire drill, samosa bribe, washed back...: nobody else after them = free again.
 		var others := false
 		for o in _brains:
@@ -2535,18 +2609,7 @@ func _end_chase(b: Dictionary) -> void:
 
 func _catch(b: Dictionary, id: int, reason := "") -> void:
 	var st: Dictionary = status[id]
-	if st.items.has("detention_ticket"):
-		st.items.erase("detention_ticket")
-		st.state = "class"
-		st.grabbed = false
-		st.sus = 40.0
-		b.npc.say("A Detention Skip... signed by the principal?! Hmph. Go.", 3.0)
-		_tell(id, "You flashed your Detention Skip ticket. Off the hook!", Color("7fe0a0"))
-		_log("%s used a Detention Skip on %s!" % [_name(id), b.npc.display_name])
-		_end_chase(b)
-		return
 	st.catches = int(st.catches) + 1
-	st.combo = 0
 	st.peak = false
 	world.heat_bumps = int(world.heat_bumps) + 1
 	if Rules.warning_only(Network.current_map, int(st.catches)):
@@ -2564,6 +2627,7 @@ func _catch(b: Dictionary, id: int, reason := "") -> void:
 		return
 	st.state = "detention"
 	st.caught += 1
+	_moment("caught", id)
 	# Short at first, longer every time (see Rules.DETENTION); shoving staff makes it worse.
 	st.timer = minf(Rules.detention_time(Network.current_map, int(st.catches)) + 8.0 * st.shoves, 90.0)
 	_tell(id, "DETENTION: %d s." % int(st.timer), Color("ff6a6a"))

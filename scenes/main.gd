@@ -40,6 +40,10 @@ func _ready() -> void:
 	Network.lobby_map_changed.connect(_on_lobby_map_changed)
 	Network.local_info.name = Settings.player_name
 	Network.local_info.look = _load_look()
+	Network.local_info.rounds = Profile.rounds
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--rounds="):  # dev: pretend to have played this many rounds
+			Network.local_info.rounds = int(arg.trim_prefix("--rounds="))
 	_fit_window()
 	_show_menu("")
 	# Draw the menu first, then go fullscreen (if chosen), then build the map behind it.
@@ -87,6 +91,9 @@ func leave_game() -> void:
 
 
 func _on_returned_to_lobby() -> void:
+	if Network.local_info.rounds < Profile.rounds:
+		Network.local_info.rounds = Profile.rounds
+		Network.push_local_info()
 	_close_pause()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_show_lobby()
@@ -474,15 +481,20 @@ func _show_lobby() -> void:
 		length.item_selected.connect(func(i): Network.round_minutes = float(Network.ROUND_LENGTHS[i]))
 		# Maps open in order (see Profile.map_unlocked); stars earned so far next to each.
 		var maps := OptionButton.new()
-		for i in Maps.LIST.size():
+		var playable: Array = Maps.PLAYABLE.duplicate()
+		if Network.map_choice >= 0 and not playable.has(Network.map_choice):
+			playable.append(Network.map_choice)  # dev: --map=N picked a parked map
+		for k in playable.size():
+			var i: int = playable[k]
 			var open := Profile.map_unlocked(i)
 			maps.add_item("%s   %d/3 stars" % [Maps.LIST[i].name, Profile.star_count(i)] if open else "LOCKED: %s" % Maps.LIST[i].name)
-			maps.set_item_disabled(i, not open)
+			maps.set_item_disabled(k, not open)
 		maps.add_item("Random map")
-		maps.add_item("Daily challenge%s" % ("  (done)" if Profile.daily_done == Rules.today() else ""))
-		maps.select(Maps.LIST.size() if Network.map_choice == Maps.RANDOM else (Maps.LIST.size() + 1 if Network.map_choice == Network.DAILY else Network.map_choice))
+		if not playable.has(Network.map_choice) and Network.map_choice != Maps.RANDOM and OS.get_cmdline_user_args().is_empty():
+			Network.set_map_choice(0)  # e.g. the daily challenge, parked for now (dev: --map=-2)
+		maps.select(playable.size() if Network.map_choice == Maps.RANDOM else playable.find(Network.map_choice))
 		maps.item_selected.connect(func(i: int):
-			Network.set_map_choice(Maps.RANDOM if i == Maps.LIST.size() else (Network.DAILY if i > Maps.LIST.size() else i)))
+			Network.set_map_choice(Maps.RANDOM if i >= playable.size() else int(playable[i])))
 		var mode := OptionButton.new()
 		mode.add_item("Class: escape together")
 		mode.add_item("Race: first out wins")

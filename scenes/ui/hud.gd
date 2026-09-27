@@ -9,20 +9,17 @@ const CampusBuilder := preload("res://scenes/world/campus_builder.gd")
 const Maps := preload("res://scenes/world/maps/maps.gd")
 const ITEM_COLORS := {
 	"hall_pass": Color("9fd8ff"), "samosa": Color("e0a050"), "medical_note": Color("fbf6e8"),
-	"canteen_key": Color("ffd24a"), "library_book": Color("4f86e0"), "detention_ticket": Color("ff9a9a"),
+	"canteen_key": Color("ffd24a"), "library_book": Color("4f86e0"),
 }
-## Phone apps, in home-screen order (index = --phone=N). _phone_app -1 is the home screen.
+## Phone apps (index = --phone=N). _phone_app -1 is the home screen, which answers the
+## four questions you have while sneaking: where's my class, where are my friends,
+## what am I doing, how much money have I got. Everything else is one tap away.
 const PHONE_APPS := [
-	{"name": "Today", "icon": "clock", "color": Color("ffd24a")},
-	{"name": "Timetable", "icon": "calendar", "color": Color("7fd0ea")},
-	{"name": "Wallet", "icon": "wallet", "color": Color("7fe0a0")},
-	{"name": "Trade", "icon": "trade", "color": Color("ff9a3c")},
-	{"name": "Tracker", "icon": "radar", "color": Color("ff8aa8")},
 	{"name": "Navigate", "icon": "route", "color": Color("b07cff")},
 	{"name": "Help Out", "icon": "help", "color": Color("5fd3c5")},
 ]
-const NAV_APP := 5
-const HELP_APP := 6
+const NAV_APP := 0
+const HELP_APP := 1
 const ROUTE_SHOW := 10.0  # seconds the Navigate trail stays on the floor and the minimap
 const MAX_STAFF_TAGS := 6  # phone tracker: only the nearest few get a name tag
 
@@ -246,8 +243,6 @@ var _end_count := -1
 var _style_cache := {}
 var _cash_label: Label
 var _slot_icons: Array[TextureRect] = []
-var _badges: HBoxContainer
-var _badges_seen := ""
 var _ask: PanelContainer
 var _mini_holder: Control
 var _essay_dismissed := false  # closed the lines with Esc this detention: don't pop them up again
@@ -261,6 +256,7 @@ var _phone_header: HBoxContainer
 var _phone_title: Label
 var _phone_clock: Label
 var _phone_sub: Label
+var _phone_status: VBoxContainer  # home screen: class, what you're doing, money, friends
 var _phone_time: Label
 var _phone_app := -1  # -1: home screen
 var _phone_tick := 0.0
@@ -349,11 +345,21 @@ func _ready() -> void:
 	_frame.add_child(_hint)
 
 	var controls := _outlined("", 14)
+	# The key line grows with experience: your first round only needs the basics
+	# (the rest are explained when they're first useful).
 	var keys_text := func():
 		var k: Callable = GameInput.key_label
-		controls.text = "%s interact   %s/%s/%s items   %s phone   %s raise hand   %s throw paper   %s ping   %s answer for a friend   %s map   %s scores   Esc menu" \
-				% [k.call("interact"), k.call("use_1"), k.call("use_2"), k.call("use_3"), k.call("phone"), k.call("raise_hand"), k.call("throw"),
-				k.call("ping"), k.call("proxy"), k.call("map"), k.call("scoreboard")]
+		var rounds := int(Network.local_info.get("rounds", 0))
+		if rounds == 0:
+			controls.text = "%s sprint   %s crouch   %s jump   %s interact   Click shove   %s map   Esc menu" \
+					% [k.call("sprint"), k.call("crouch"), k.call("jump"), k.call("interact"), k.call("map")]
+		elif rounds < 3:
+			controls.text = "%s interact   Click shove   %s/%s/%s items   %s phone   %s throw paper   %s ping   %s map   Esc menu" \
+					% [k.call("interact"), k.call("use_1"), k.call("use_2"), k.call("use_3"), k.call("phone"), k.call("throw"), k.call("ping"), k.call("map")]
+		else:
+			controls.text = "%s interact   %s/%s/%s items   %s phone   %s raise hand   %s throw paper   %s ping   %s answer for a friend   %s map   %s scores   Esc menu" \
+					% [k.call("interact"), k.call("use_1"), k.call("use_2"), k.call("use_3"), k.call("phone"), k.call("raise_hand"), k.call("throw"),
+					k.call("ping"), k.call("proxy"), k.call("map"), k.call("scoreboard")]
 	keys_text.call()
 	GameInput.rebound.connect(keys_text)
 	controls.tree_exiting.connect(func(): GameInput.rebound.disconnect(keys_text))
@@ -533,15 +539,6 @@ func _build_meter() -> void:
 	_heat_label = Label.new()
 	_heat_label.add_theme_font_size_override("font_size", 14)
 	box.add_child(_heat_label)
-	# Merit badges (full marks in a test), one per subject, with a count.
-	_badges = HBoxContainer.new()
-	_badges.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	_badges.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_badges.position = Vector2(-20, 150)
-	_badges.alignment = BoxContainer.ALIGNMENT_END
-	_badges.add_theme_constant_override("separation", 6)
-	_badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_frame.add_child(_badges)
 
 
 func _build_banner() -> void:
@@ -857,7 +854,9 @@ func setup_map(campus: RefCounted) -> void:
 							await get_tree().create_timer(0.5).timeout)
 		if arg == "--stylepop":  # dev: style pop-ups for screenshots
 			for k in 3:
-				get_tree().create_timer(5.0 + k * 0.5).timeout.connect(on_effect.bind("style", Vector3.ZERO, ["CLOSE CALL|50|1", "SILENT|60|2", "SHOOK THEM OFF|180|3"][k]))
+				get_tree().create_timer(5.0 + k * 0.5).timeout.connect(on_effect.bind("style", Vector3.ZERO, ["CLOSE CALL|50", "SILENT|30", "SHOOK THEM OFF|60"][k]))
+		if arg == "--nohud":  # dev: clean plates for trailers
+			visible = false
 		if arg == "--navshow":  # dev: the Navigate trail to your seat, a few seconds in
 			get_tree().create_timer(5.0).timeout.connect(func(): _route_until = _now() + ROUTE_SHOW)
 		if arg == "--scan":  # dev: staff tracker on, a few seconds in
@@ -1209,45 +1208,6 @@ func close_essay() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
-# --- Merit badges ---------------------------------------------------------------------------
-
-func _refresh_badges(st: Dictionary) -> void:
-	var badges: Dictionary = st.get("badges", {})
-	var sig := str(badges)
-	if sig == _badges_seen:
-		return
-	_badges_seen = sig
-	for c in _badges.get_children():
-		c.queue_free()
-	var world := get_parent()
-	var director: Node = world.get_node_or_null("Director") if world else null
-	for k in 4:
-		var n := int(badges.get(str(k), 0))
-		if n <= 0:
-			continue
-		var card := PanelContainer.new()
-		card.add_theme_stylebox_override("panel", _card(Color(0.08, 0.08, 0.14, 0.72), 10, 4))
-		card.tooltip_text = "%s merit badge" % (director.SUBJECTS[k] if director else "")
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 2)
-		card.add_child(row)
-		var icon := TextureRect.new()
-		icon.texture = Icons.badge(k, 44)
-		icon.custom_minimum_size = Vector2(44, 44)
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		row.add_child(icon)
-		var count := _outlined("x%d" % n, 16)
-		count.add_theme_color_override("font_color", Color("ffd24a"))
-		row.add_child(count)
-		_badges.add_child(card)
-	if _badges.get_child_count() > 0:
-		var pop := create_tween()
-		_badges.scale = Vector2(1.25, 1.25)
-		_badges.pivot_offset = Vector2(_badges.size.x, 0)
-		pop.tween_property(_badges, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK)
-
-
 # --- Raise your hand ---------------------------------------------------------------------------
 
 func open_questions() -> void:
@@ -1413,7 +1373,7 @@ func _build_phone() -> void:
 	_phone_home.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(_phone_home)
 	_phone_clock = Label.new()
-	_phone_clock.add_theme_font_size_override("font_size", 48)
+	_phone_clock.add_theme_font_size_override("font_size", 34)
 	_phone_clock.add_theme_color_override("font_color", Color("ffd24a"))
 	_phone_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_phone_home.add_child(_phone_clock)
@@ -1424,11 +1384,12 @@ func _build_phone() -> void:
 	_phone_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_phone_sub.custom_minimum_size.x = 260
 	_phone_home.add_child(_phone_sub)
-	var spacer := Control.new()
-	spacer.custom_minimum_size.y = 10
-	_phone_home.add_child(spacer)
+	_phone_status = VBoxContainer.new()
+	_phone_status.add_theme_constant_override("separation", 2)
+	_phone_status.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_phone_home.add_child(_phone_status)
 	var grid := GridContainer.new()
-	grid.columns = 3
+	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 12)
 	_phone_home.add_child(grid)
@@ -1532,8 +1493,8 @@ func _refresh_phone(director: Node, me: Node, st: Dictionary, delta: float) -> v
 	_phone_time.text = _clock(left)
 	if _phone_app == -1:
 		_phone_clock.text = _clock(left)
-		var room: int = director.current_room(multiplayer.get_unique_id())
-		_phone_sub.text = "until the final bell\n%s · %s" % [director.SUBJECTS[room], Network.CLASSROOMS[room]]
+		_phone_sub.text = "until the final bell"
+		_fill_home(director, st)
 		return
 	if _phone_app == NAV_APP:
 		_refresh_navigate(director, me, st)
@@ -1541,13 +1502,8 @@ func _refresh_phone(director: Node, me: Node, st: Dictionary, delta: float) -> v
 	for child in _phone_body.get_children():
 		_phone_body.remove_child(child)
 		child.queue_free()
-	match _phone_app:
-		0: _app_home(director, st)
-		1: _app_timetable(director, st)
-		2: _app_wallet(director, st)
-		3: _app_trade(director, me, st)
-		4: _app_tracker(me)
-		HELP_APP: _app_help(director, st)
+	if _phone_app == HELP_APP:
+		_app_help(director, me, st)
 
 
 func _phone_text(text: String, size_px := 14, color := Color.WHITE) -> Label:
@@ -1578,138 +1534,103 @@ func _phone_button(text: String, handler: Callable, color := Color("7fd0ea"), en
 	return b
 
 
-func _app_home(director: Node, st: Dictionary) -> void:
+func _home_line(text: String, size_px := 14, color := Color.WHITE) -> void:
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = 262
+	l.add_theme_font_size_override("font_size", size_px)
+	l.add_theme_color_override("font_color", color)
+	_phone_status.add_child(l)
+
+
+## The home screen, at a glance: where's my class, what am I doing, my money, my friends.
+func _fill_home(director: Node, st: Dictionary) -> void:
+	for c in _phone_status.get_children():
+		_phone_status.remove_child(c)
+		c.queue_free()
+	var id := multiplayer.get_unique_id()
 	var now: float = director.elapsed
-	var ev := str(Network.round_rules.get("event", ""))
-	if ev != "":
-		_phone_text("TODAY: " + Rules.event_name(ev), 13, Color("ff9a4a"))
-		_phone_text(Rules.event_about(ev), 11, Color(1, 1, 1, 0.65))
-	_phone_text("Heat %d/4" % int(director.world.get("heat", 1)), 12, Color("ffb37a"))
-	_phone_text(_clock(director.round_time - now), 40, Color("ffd24a"))
-	_phone_text("until the final bell", 12, Color(1, 1, 1, 0.6))
-	var room: int = director.current_room(multiplayer.get_unique_id())
-	var w: Dictionary = director.world
-	_phone_text("Now: %s in %s" % [director.SUBJECTS[room], Network.CLASSROOMS[room]], 15)
-	_phone_text("Pocket money: Rs %d" % int(st.get("cash", 0)), 16, Color("ffd24a"))
-	var r: Dictionary = director.rooms[room]
-	if float(r.get("exam_until", -100.0)) > now:
-		_phone_text("TEST RIGHT NOW! Sit in your seat.", 14, Color("ff6a6a"))
-	elif float(r.get("exam_at", 99999.0)) < 90000.0:
-		_phone_text("Surprise test in %s" % _clock(float(r.exam_at) - now), 14, Color("ffb37a"))
-	if int(w.get("period", 0)) < int(w.get("periods", 1)) - 1:
-		_phone_text("Class change in %s" % _clock(float(w.period_start) + float(w.period_len) - now), 14, Color("9fd8ff"))
-	_phone_text("\nMESSAGES", 12, Color("9fd8ff"))
-	var any := false
-	for entry in director.feed:
-		if now - float(entry.t) < 60.0:
-			_phone_text("· " + str(entry.text), 12, Color(1, 1, 1, 0.8))
-			any = true
-	if not any:
-		_phone_text("No new messages.", 12, Color(1, 1, 1, 0.5))
-
-
-func _app_timetable(director: Node, st: Dictionary) -> void:
-	var w: Dictionary = director.world
-	var periods := int(w.get("periods", 1))
-	var plen := float(w.get("period_len", 160.0))
-	var now_p := int(w.get("period", 0))
-	var home := int(Network.players.get(multiplayer.get_unique_id(), {}).get("classroom", Network.local_info.classroom))
-	var n: int = maxi(1, _campus.classes.size())
-	_phone_text("TODAY'S TIMETABLE", 15, Color("ffd24a"))
-	for p in periods:
-		var room := (home + p) % n
-		var floor_txt := _floor_name(_campus.level_of(Vector3(0, float(_campus.classes[room].y), 0))).capitalize()
-		var tag := "  ◀ NOW" if p == now_p else ("  (done)" if p < now_p else "")
-		var color := Color("7fe0a0") if p == now_p else (Color(1, 1, 1, 0.45) if p < now_p else Color.WHITE)
-		_phone_text("%s – %s   Period %d%s" % [_clock(p * plen), _clock((p + 1) * plen), p + 1, tag], 13, color)
-		_phone_text("   %s · %s, %s" % [director.SUBJECTS[room], Network.CLASSROOMS[room], floor_txt], 13, color)
-	var room_now: int = director.current_room(multiplayer.get_unique_id())
-	var r: Dictionary = director.rooms[room_now]
-	var now: float = director.elapsed
-	_phone_text("\nTHIS PERIOD", 12, Color("9fd8ff"))
-	if r.get("calling", false):
-		_phone_text("Attendance: happening NOW", 13, Color("ff6a6a"))
-	elif float(r.get("attendance_in", 0.0)) > 9000.0:
-		_phone_text("Attendance: done", 13, Color("7fe0a0"))
-	else:
-		_phone_text("Attendance in %s" % _clock(maxf(0.0, float(r.attendance_in))), 13)
-	if float(r.get("exam_until", -100.0)) > now:
-		_phone_text("Surprise test: NOW (sit down!)", 13, Color("ff6a6a"))
-	elif float(r.get("exam_at", 99999.0)) < 90000.0:
-		_phone_text("Surprise test in %s" % _clock(float(r.exam_at) - now), 13)
-	else:
-		_phone_text("Surprise test: done", 13, Color(1, 1, 1, 0.6))
-
-
-func _app_wallet(director: Node, st: Dictionary) -> void:
-	_phone_text("Rs %d" % int(st.get("cash", 0)), 36, Color("ffd24a"))
-	_phone_text("pocket money  ·  earned Rs %d this round" % int(st.get("earned", 0)), 12, Color(1, 1, 1, 0.6))
-	_phone_text("\nUPGRADES", 12, Color("9fd8ff"))
-	var ups: Dictionary = st.get("upgrades", {})
-	for key in director.UPGRADES:
-		var u: Array = director.UPGRADES[key]
-		var lvl := int(ups.get(key, 0))
-		_phone_text("%s  %s" % [u[0], "Lv %d/%d" % [lvl, (u[2] as Array).size()] if lvl > 0 else "(not bought)"], 13, Color("7fe0a0") if lvl > 0 else Color(1, 1, 1, 0.6))
-	_phone_text("\nIN YOUR POCKETS", 12, Color("9fd8ff"))
-	var items: Array = st.get("items", [])
-	if items.is_empty():
-		_phone_text("Nothing.", 13, Color(1, 1, 1, 0.5))
-	for item in items:
-		_phone_text("· " + str(director.ITEMS.get(item, item)), 13)
-	_phone_text("\nHOW TO EARN", 12, Color("9fd8ff"))
-	_phone_text("Coins on the ground Rs 5-15 · side quest Rs 40 · class test up to Rs 20 · present at attendance Rs 5. Spend it at Pappu Uncle's canteen.", 12, Color(1, 1, 1, 0.75))
-
-
-func _app_trade(director: Node, me: Node, st: Dictionary) -> void:
-	_phone_text("TRADE WITH CLASSMATES", 15, Color("ffd24a"))
-	_phone_text("Stand next to a classmate, then send money or an item.", 12, Color(1, 1, 1, 0.65))
+	var room: int = director.current_room(id)
+	var floor_txt := _floor_name(_campus.level_of(Vector3(0, float(_campus.classes[room].y), 0))).capitalize()
+	var r: Dictionary = director.rooms[room] if room < director.rooms.size() else {}
+	_home_line("CLASS", 11, Color("9fd8ff"))
+	match str(st.get("state", "")):
+		"escaped":
+			_home_line("You're OUT! Open Help Out and be mission control.", 14, Color("7fe0a0"))
+		"detention":
+			_home_line("In detention: %s left. Friends can get you out." % _clock(float(st.get("timer", 0.0))), 14, Color("ff9a4a"))
+		_:
+			_home_line("%s  ·  %s, %s" % [director.SUBJECTS[room], Network.CLASSROOMS[room], floor_txt], 15)
+			var teacher: String = director.teacher_line(room)
+			if teacher != "":
+				_home_line(teacher, 12, Color("ffb37a"))
+			var when := []
+			if r.get("calling", false):
+				when.append("ATTENDANCE NOW")
+			elif float(r.get("attendance_in", 99999.0)) < 9000.0:
+				when.append("attendance in %s" % _clock(maxf(0.0, float(r.attendance_in))))
+			if float(r.get("exam_until", -100.0)) > now:
+				when.append("TEST NOW")
+			elif float(r.get("exam_at", 99999.0)) < 90000.0:
+				when.append("test in %s" % _clock(float(r.exam_at) - now))
+			if not when.is_empty():
+				_home_line(" · ".join(when), 12, Color("ffd24a"))
+	_home_line("DOING", 11, Color("9fd8ff"))
+	var doing := "Quest chain done: walk out a gate!"
+	for q in st.get("quests", []):
+		if not q.done:
+			doing = str(preload("res://scenes/world/director.gd").QUESTS.get(q.id, q.id))
+			break
+	_home_line(doing, 13)
+	var items := []
+	for item in st.get("items", []):
+		items.append(str(director.ITEMS.get(item, item)))
+	_home_line("Rs %d%s" % [int(st.get("cash", 0)), ("  ·  " + ", ".join(items)) if not items.is_empty() else ""], 14, Color("ffd24a"))
 	var players := get_parent().get_node_or_null("Players")
-	var found := false
-	if players and me:
-		for p in players.get_children():
-			if p == me or p.global_position.distance_to(me.global_position) > 3.5:
-				continue
-			found = true
-			var to := int(str(p.name))
-			_phone_text("\n" + str(p.display_name), 16, Color("7fd0ea"))
-			var row := HBoxContainer.new()
-			row.add_theme_constant_override("separation", 6)
-			_phone_body.add_child(row)
-			for amount in [10, 50]:
-				row.add_child(_phone_button("Give Rs %d" % amount, func(): director.request.rpc_id(1, "give", {"to": to, "cash": amount}),
-					Color("ffd24a"), int(st.get("cash", 0)) >= amount))
-			var items: Array = st.get("items", [])
-			for slot in items.size():
-				_phone_body.add_child(_phone_button("Give: %s" % director.ITEMS.get(items[slot], items[slot]),
-					func(): director.request.rpc_id(1, "give", {"to": to, "slot": slot}), ITEM_COLORS.get(items[slot], Color("7fd0ea"))))
-	if not found:
-		_phone_text("\nNobody close enough.", 14, Color(1, 1, 1, 0.5))
-
-
-func _app_tracker(me: Node) -> void:
-	_phone_text("STAFF TRACKER", 15, Color("ffd24a"))
-	_phone_text("Shows staff around you for 5 s. Names go on the nearest %d." % MAX_STAFF_TAGS, 12, Color(1, 1, 1, 0.65))
-	if me == null:
-		return
-	var now := Time.get_ticks_msec() / 1000.0
-	if now < me.phone_until:
-		_phone_text("Scanning...  %ds" % int(ceil(me.phone_until - now)), 16, Color("7fe0a0"))
-	elif now < me.phone_ready:
-		_phone_text("Recharging...  %ds" % int(ceil(me.phone_ready - now)), 16, Color("ffb37a"))
-	else:
-		_phone_body.add_child(_phone_button("SCAN FOR STAFF", func(): me.scan_staff(), Color("7fe0a0")))
+	var friends := []
+	for pid in director.status:
+		if int(pid) == id:
+			continue
+		var ft: Dictionary = director.status[pid]
+		var who := str(Network.players.get(int(pid), {}).get("name", "Friend"))
+		var node: Node3D = players.get_node_or_null(str(pid)) if players else null
+		var where := ""
+		match str(ft.state):
+			"escaped": where = "OUT"
+			"detention": where = "in DETENTION"
+			"chased": where = "being CHASED"
+			_:
+				if node:
+					where = _floor_name(_campus.level_of(node.global_position)).capitalize()
+					var place: String = _campus.place_name(node.global_position)
+					if place != "":
+						where = "%s, %s" % [place, where]
+		friends.append("%s: %s" % [who, where])
+	if not friends.is_empty():
+		_home_line("FRIENDS", 11, Color("9fd8ff"))
+		for f in friends.slice(0, 5):
+			_home_line(f, 12, Color("7fd0ea"))
 
 
 # --- Phone: Help Out (after you escape) ----------------------------------------------------------
 
-func _app_help(director: Node, st: Dictionary) -> void:
-	_phone_text("HELP FRIENDS STILL INSIDE", 15, Color("5fd3c5"))
+func _app_help(director: Node, me_node: Node, st: Dictionary) -> void:
+	_phone_text("MISSION CONTROL", 15, Color("5fd3c5"))
 	if st.get("state", "") != "escaped":
-		_phone_text("Escape the university first. From outside you can text friends their test answers, prank-call the staff chasing them, send money and order samosa delivery.", 12, Color(1, 1, 1, 0.65))
+		_phone_text("Escape the university first. From outside you run mission control: text friends their test answers, prank-call the staff chasing them, send money and samosas, and track the staff.", 12, Color(1, 1, 1, 0.65))
 		return
 	_phone_text("Each help: +%d points. Answers: once per friend per period." % director.ASSIST_POINTS, 12, Color(1, 1, 1, 0.6))
 	_phone_body.add_child(_phone_button("Ring the bell at the gate", func(): director.request.rpc_id(1, "outside_bell", {}), Color("ffd24a")))
 	_phone_text("Calls the nearest staff out to the gate, away from their posts.", 11, Color(1, 1, 1, 0.55))
+	if me_node:
+		var now_s := _now()
+		var scan_txt := "Track the staff (5 s)"
+		if now_s < me_node.phone_until:
+			scan_txt = "Tracking staff...  %ds" % int(ceil(me_node.phone_until - now_s))
+		elif now_s < me_node.phone_ready:
+			scan_txt = "Tracker recharging  %ds" % int(ceil(me_node.phone_ready - now_s))
+		_phone_body.add_child(_phone_button(scan_txt, func(): me_node.scan_staff(), Color("ff8aa8"), now_s >= me_node.phone_ready))
 	var me := multiplayer.get_unique_id()
 	var any := false
 	for pid in director.status:
@@ -1755,7 +1676,6 @@ func _app_help(director: Node, st: Dictionary) -> void:
 			Color("ffd24a"), int(st.get("cash", 0)) >= 10))
 		grid.add_child(_phone_button("Samosa Rs %d" % director.DELIVERY_PRICE, func(): director.request.rpc_id(1, "deliver", {"to": id}),
 			Color("e0a050"), int(st.get("cash", 0)) >= director.DELIVERY_PRICE))
-		var me_node: Node = get_parent().get_node("Players").get_node_or_null(str(me))
 		var watching: bool = me_node != null and int(me_node.get("spectating")) == id
 		_phone_body.add_child(_phone_button("Stop watching" if watching else "Watch %s" % who,
 			func(): if me_node: me_node.spectate(-1 if watching else id), Color("b07cff")))
@@ -2172,24 +2092,26 @@ func on_effect(kind: String, _pos: Vector3, extra: String) -> void:
 	match kind:
 		"style":
 			var parts := extra.split("|")
-			if parts.size() == 3:
-				_pop_style(parts[0], int(parts[1]), int(parts[2]))
+			if parts.size() >= 2:
+				_pop_style(parts[0], int(parts[1]))
 		"heat":
 			var h := int(extra)
 			toast("HEAT %d!  %s" % [h, Rules.HEAT_NAMES[clampi(h, 1, 4)].get_slice(": ", 1)], Color("ff9a4a"))
 			Sfx.play("alarm_spotted", -10.0, 0.7 + 0.1 * h)
 		"round_intro":
 			_show_intro.call_deferred()
+		"hint_proxy":
+			toast("%s is missing! [%s] answer \"Present!\" for them" % [extra, GameInput.key_label("proxy")], Color("7fe0a0"))
 		"win":
 			_show_escape_moment()
 
 
-## "CLOSE CALL +50  x3", rising and fading next to the crosshair.
-func _pop_style(title: String, points: int, combo: int) -> void:
-	var l := _outlined("%s  +%d%s" % [title, points, "   x%d" % combo if combo > 1 else ""], 22 + mini(combo, 5) * 2)
-	l.add_theme_color_override("font_color", [Color("ffffff"), Color("ffd24a"), Color("ffb040"), Color("ff7a3a"), Color("ff4a8a")][clampi(combo - 1, 0, 4)])
+## "CLOSE CALL +50", rising and fading next to the crosshair.
+func _pop_style(title: String, points: int) -> void:
+	var l := _outlined("%s  +%d" % [title, points], 26)
+	l.add_theme_color_override("font_color", Color("ffd24a"))
 	_style_box.add_child(l)
-	Sfx.play("pickup", -6.0, 1.2 + 0.1 * combo)
+	Sfx.play("pickup", -6.0, 1.3)
 	var tw := create_tween()
 	l.scale = Vector2(1.4, 1.4)
 	tw.tween_property(l, "scale", Vector2.ONE, 0.18)
@@ -2313,7 +2235,6 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 		return
 
 	_cash_label.text = "Pocket money: Rs %d" % int(st.get("cash", 0))
-	_refresh_badges(st)
 	if _ask and _ask.visible and (st.get("state", "") != "class" or director.round_over):
 		close_questions()
 	_refresh_phone(director, me, st, delta)
@@ -2752,9 +2673,6 @@ func _results_highlights(results: Array) -> Control:
 	var ghost: Dictionary = best.call("longest_unseen", false)
 	if not ghost.is_empty() and float(ghost.longest_unseen) >= 10.0:
 		lines.append("Ghost: %s, %d s out of class unseen" % [ghost.name, int(ghost.longest_unseen)])
-	var combo: Dictionary = best.call("combo_best", false)
-	if not combo.is_empty() and int(combo.combo_best) >= 2:
-		lines.append("Best combo: %s, x%d" % [combo.name, int(combo.combo_best)])
 	var paper: Dictionary = best.call("best_distraction", false)
 	if not paper.is_empty() and int(paper.best_distraction) >= 1:
 		lines.append("Best distraction: %s's paper ball pulled %d staff" % [paper.name, int(paper.best_distraction)])

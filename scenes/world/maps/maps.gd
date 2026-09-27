@@ -4,6 +4,9 @@ extends RefCounted
 ## Index = map id (what the host picks and every peer builds).
 
 const RANDOM := -1
+## The maps offered in the lobby (and picked by Random). The others still build and
+## play (dev: --map=N), they're just parked until First Day and Grand Campus are great.
+const PLAYABLE := [0, 1]
 
 const LIST := [
 	{"name": "First Day", "about": "The small starter school. Sneak out of the compound and reach the chai stall. Learn the ropes here."},

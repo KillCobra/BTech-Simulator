@@ -30,11 +30,11 @@ var _next_online_id := 2
 
 const MAX_PLAYERS := 8
 const CLASSROOMS := ["Class A", "Class B", "Class C", "Lab"]
-const ROUND_LENGTHS := [5, 8, 12, 20]
+const ROUND_LENGTHS := [5, 8, 12]
 const MAP_COUNT := 5  # scenes/world/maps/maps.gd LIST
 
 var players := {}  # peer_id -> {"name": String, "classroom": int, "look": Dictionary, "ready": bool}
-var local_info := {"name": "Student", "classroom": 0, "look": {}}
+var local_info := {"name": "Student", "classroom": 0, "look": {}, "rounds": 0}  # rounds: played so far (Profile)
 var in_game := false
 var round_minutes := 8.0
 var map_choice := 0   # host's pick in the lobby: a map id, -1 random, -2 the daily challenge
@@ -43,7 +43,8 @@ const DAILY := -2
 const Rules := preload("res://scripts/rules.gd")
 var game_mode := "class"  # host's pick: "class" (escape together) or "race" (first out wins)
 ## This round's rules, the same on every peer: {"mode", "event", "daily", "rule", "date"}.
-var round_rules := {"mode": "class", "event": "", "daily": false, "rule": ""}
+## "fresh": someone in the lobby is playing their very first round (the basics only).
+var round_rules := {"mode": "class", "event": "", "daily": false, "rule": "", "fresh": false}
 
 var loaded_peers: Array = []  # replicated: peers whose world is ready for replication
 
@@ -674,7 +675,7 @@ func _set_ready(value: bool) -> void:
 
 func start_game() -> void:
 	if multiplayer.is_server() and not in_game and all_ready():
-		var rules := {"mode": game_mode, "event": "", "daily": false, "rule": "", "date": 0}
+		var rules := {"mode": game_mode, "event": "", "daily": false, "rule": "", "date": 0, "fresh": false}
 		var rng := RandomNumberGenerator.new()
 		rng.randomize()
 		if map_choice == DAILY:
@@ -684,6 +685,11 @@ func start_game() -> void:
 		else:
 			current_map = map_choice if map_choice >= 0 else _random_open_map()
 			rules.event = Rules.random_event(rng)
+		# Someone's first round: First Day teaches the basics only (no tests or round event).
+		for id in players:
+			if int(players[id].get("rounds", 0)) == 0 and current_map == 0 and not rules.daily:
+				rules.fresh = true
+				rules.event = ""
 		for arg in OS.get_cmdline_user_args():  # dev: force a round event / mode / daily rule
 			if arg.begins_with("--event="):
 				rules.event = arg.trim_prefix("--event=").replace("none", "")
@@ -691,13 +697,16 @@ func start_game() -> void:
 				rules.mode = arg.trim_prefix("--mode=")
 			elif arg.begins_with("--rule="):
 				rules.rule = arg.trim_prefix("--rule=")
+			elif arg == "--fresh":
+				rules.fresh = true
+				rules.event = ""
 		_start.rpc(round_minutes, current_map, rules)
 
 
 ## Random map: one the host has unlocked.
 func _random_open_map() -> int:
 	var open := []
-	for i in MAP_COUNT:
+	for i in preload("res://scenes/world/maps/maps.gd").PLAYABLE:
 		if Profile.map_unlocked(i):
 			open.append(i)
 	return open[randi() % open.size()] if not open.is_empty() else 0
@@ -779,6 +788,7 @@ func _register(info: Dictionary) -> void:
 		"name": _unique_name(id, str(info.get("name", "Student")).strip_edges().left(16)),
 		"classroom": clampi(int(info.get("classroom", 0)), 0, CLASSROOMS.size() - 1),
 		"look": look_in if look_in is Dictionary else {},
+		"rounds": maxi(0, int(info.get("rounds", 0))),
 		"ready": was_ready or id == 1,  # newcomers start NOT ready
 	}
 	_sync_players.rpc(players)
@@ -829,7 +839,8 @@ func _start(minutes: float, map_id := 0, rules := {}) -> void:
 	round_minutes = minutes
 	current_map = clampi(map_id, 0, MAP_COUNT - 1)
 	round_rules = {"mode": str(rules.get("mode", "class")), "event": str(rules.get("event", "")),
-		"daily": bool(rules.get("daily", false)), "rule": str(rules.get("rule", "")), "date": int(rules.get("date", 0))}
+		"daily": bool(rules.get("daily", false)), "rule": str(rules.get("rule", "")), "date": int(rules.get("date", 0)),
+		"fresh": bool(rules.get("fresh", false))}
 	in_game = true
 	if multiplayer.is_server():
 		_loaded.clear()

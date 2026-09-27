@@ -51,7 +51,7 @@ const CHAIN_PASS := 40.0   # seconds of gate pass for finishing the chain
 const CHAIN_BONUS := 200   # score for finishing the chain
 
 
-# --- Style: close calls and combos ---------------------------------------------------------------
+# --- Style: close calls ---------------------------------------------------------------------------
 
 const STYLE := {
 	"close_call": ["CLOSE CALL", 50],
@@ -61,7 +61,6 @@ const STYLE := {
 	"quest": ["QUEST", 25],
 }
 const SILENT_METRES := 25.0  # walked this far outside class without being seen = SILENT
-const COMBO_MAX := 5
 const CLASS_ESCAPE_BONUS := 0.5  # everyone out (2+ players, class mode): +50% score
 const RACE_WIN_BONUS := 300
 
