@@ -22,6 +22,8 @@ const BINDINGS := [
 	["ping", "Ping", [KEY_T]],
 	["proxy", "Answer for a friend", [KEY_R]],
 	["raise_hand", "Raise hand (ask a question)", [KEY_H]],
+	["push_to_talk", "Push to talk (voice)", [KEY_V]],
+	["shout", "Quick shout (no mic needed)", [KEY_B]],
 	["scoreboard", "Scores", [KEY_TAB]],
 	["map", "Big map", [KEY_M]],
 	["map_floor", "Map: change floor", [KEY_F]],

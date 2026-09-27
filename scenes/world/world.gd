@@ -315,6 +315,11 @@ func _on_effect(kind: String, pos: Vector3, extra: String) -> void:
 			Sfx.play_at("deny", pos, -4.0, 1.4)
 		"throw":
 			Sfx.play_at("paper", pos, -4.0, 1.6)
+		"shout":
+			var parts := extra.split("|", true, 1)
+			var who := _players_root.get_node_or_null(parts[0])
+			if who and parts.size() > 1:
+				who.shout(parts[1])
 
 
 ## A thrown paper ball: flies along its arc, then lies where it hit for a while.

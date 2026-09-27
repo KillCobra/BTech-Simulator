@@ -21,6 +21,11 @@ Settings="*res://autoload/settings.gd"
 Sfx="*res://autoload/sfx.gd"
 Network="*res://autoload/network_manager.gd"
 Profile="*res://autoload/profile.gd"
+Voice="*res://autoload/voice.gd"
+
+[audio]
+
+driver/enable_input=true
 
 [display]
 

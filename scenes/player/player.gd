@@ -63,6 +63,9 @@ var _head: Node3D
 var _camera: Camera3D
 var _viewmodel: Node3D
 var _label: Label3D
+var _bubble: Label3D     # quick shouts over your head
+var _bubble_t := 0.0
+var _talk_mark := false  # "((( )))" by the name while they're on the mic
 var _bob := 0.0
 # Talking to staff: a local third-person shot of the two of you (see _start_talk).
 var _talk_npc: Node = null
@@ -119,6 +122,14 @@ func _build() -> void:
 	_label.outline_modulate = tag[2]
 	_label.position.y = STAND_HEIGHT + 0.3
 	add_child(_label)
+	_bubble = Label3D.new()
+	_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_bubble.font_size = 34
+	_bubble.outline_size = 12
+	_bubble.no_depth_test = true
+	_bubble.modulate = Color("ffd24a")
+	_bubble.position.y = STAND_HEIGHT + 0.75
+	add_child(_bubble)
 
 	_head = Node3D.new()
 	_head.name = "Head"
@@ -174,6 +185,13 @@ func _ready() -> void:
 					else:
 						var v := point.split_floats(",")
 						_dev_walk.append(Vector3(v[0], 0, v[1]))
+
+
+## A quick shout over this student's head (everyone sees and hears it).
+func shout(text: String) -> void:
+	_bubble.text = text
+	_bubble_t = 2.2
+	Sfx.voice(text, global_position + Vector3(0, 1.6, 0), 1.0 + (int(str(name)) % 7) * 0.06)
 
 
 ## Server -> owner: move this student (detention, back to class).
@@ -608,6 +626,13 @@ func _physics_process(delta: float) -> void:
 		_head.rotation.x = lerpf(_head.rotation.x, net_pitch, k)
 		_footsteps(delta, false)
 
+	_bubble_t = maxf(0.0, _bubble_t - delta)
+	_bubble.visible = _bubble_t > 0.0 and not hidden
+	_bubble.position.y = _head.position.y + 0.85
+	var talking: bool = Voice.is_speaking(int(str(name))) and not is_multiplayer_authority()
+	if talking != _talk_mark:
+		_talk_mark = talking
+		_label.text = ("((  %s  ))" % display_name) if talking else display_name
 	var eye := SIT_EYE_HEIGHT if seated else (CROUCH_EYE_HEIGHT if crouching else EYE_HEIGHT)
 	_head.position.y = lerpf(_head.position.y, eye, minf(1.0, delta * (4.0 if seated else 12.0)))
 	_label.position.y = _head.position.y + 0.45

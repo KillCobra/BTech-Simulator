@@ -285,6 +285,10 @@ var _shop: PanelContainer
 var _shop_body: VBoxContainer
 var _shop_tick := 0.0
 var _dev_shop := false
+# Voice: your mic's state, and the quick-shout menu (B) for anyone without one.
+var _mic: Label
+var _shout: PanelContainer
+var _shout_until := 0.0
 
 
 func _ready() -> void:
@@ -369,6 +373,11 @@ func _ready() -> void:
 	controls.position.y -= 30
 	_frame.add_child(controls)
 	_keys_line = controls
+
+	_mic = _outlined("", 15)
+	_mic.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_mic.position = Vector2(22, -180)
+	_frame.add_child(_mic)
 
 	_charge = _outlined("", 18)
 	_charge.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -880,6 +889,9 @@ func _section(text: String) -> Label:
 
 
 func _input(event: InputEvent) -> void:
+	if _shout_input(event):
+		get_viewport().set_input_as_handled()
+		return
 	if _essay != null and _essay.visible and event.is_action_pressed("ui_cancel"):
 		_essay_dismissed = true
 		close_essay()
@@ -1297,6 +1309,83 @@ func close_questions() -> void:
 	_ask.visible = false
 	if should_capture():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+# --- Voice --------------------------------------------------------------------------------------
+
+## Bottom-left: is your mic live, and how far could a teacher hear you right now?
+func _refresh_mic(st: Dictionary) -> void:
+	var mode := int(Settings.voice_mode)
+	var hear := bool(Network.round_rules.get("hear", true)) and str(st.get("state", "")) in ["class", "chased"]
+	var shout_key := GameInput.key_label("shout")
+	if mode == Settings.VoiceMode.OFF or not Voice.mic_ok:
+		_mic.text = "%s   [%s] quick shout" % ["Mic off" if Voice.mic_ok else "No mic", shout_key]
+		_mic.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
+		return
+	if Voice.transmitting:
+		var r: float = preload("res://scenes/world/director.gd").voice_radius(Voice.level)
+		var bars := clampi(int(r / 2.0), 1, 8)
+		var warn := ""
+		if hear:
+			warn = "   staff hear you ~%d m" % int(round(r)) if r >= 4.0 else "   whisper: safe"
+		_mic.text = "● TALKING  %s%s" % ["|".repeat(bars), warn]
+		_mic.add_theme_color_override("font_color", Color("ff6a5a") if hear and r >= 4.0 else Color("7fe0a0"))
+	elif mode == Settings.VoiceMode.PUSH_TO_TALK:
+		_mic.text = "[%s] push to talk   [%s] quick shout" % [GameInput.key_label("push_to_talk"), shout_key]
+		_mic.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
+	else:
+		_mic.text = "Mic on (open)   [%s] quick shout" % shout_key
+		_mic.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
+
+
+## Quick shout (B, then 1-4): no mic needed. Returns true if it used the event.
+func _shout_input(event: InputEvent) -> bool:
+	var open := _shout != null and _shout.visible
+	if open and _now() > _shout_until:
+		_shout.visible = false
+		open = false
+	if not open:
+		if event.is_action_pressed("shout") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
+				and not (get_viewport().gui_get_focus_owner() is LineEdit):
+			_open_shout()
+			return true
+		return false
+	if event.is_action_pressed("shout") or event.is_action_pressed("ui_cancel"):
+		_shout.visible = false
+		return true
+	if event is InputEventKey and event.pressed and not event.echo:
+		var k: int = event.physical_keycode - KEY_1
+		if k >= 0 and k < 4:
+			var director: Node = get_parent().get_node_or_null("Director")
+			if director:
+				director.request.rpc_id(1, "shout", {"k": k})
+			_shout.visible = false
+			return true
+	return false
+
+
+func _open_shout() -> void:
+	if _shout == null:
+		_shout = PanelContainer.new()
+		_shout.add_theme_stylebox_override("panel", _card(Color(0.07, 0.07, 0.12, 0.92), 14, 12))
+		_shout.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		_shout.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_shout.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		_shout.position.y -= 230
+		_shout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_frame.add_child(_shout)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 14)
+		_shout.add_child(row)
+		var list: Array = preload("res://scenes/world/director.gd").SHOUT_LIST
+		for k in list.size():
+			var l := Label.new()
+			l.text = "[%d] %s" % [k + 1, list[k][0]]
+			l.add_theme_font_size_override("font_size", 20)
+			l.add_theme_color_override("font_color", Color("ffd24a") if k > 0 else Color("9fd8ff"))
+			row.add_child(l)
+	_shout.visible = true
+	_shout_until = _now() + 3.0
 
 
 # --- Phone ---------------------------------------------------------------------------------
@@ -2238,6 +2327,7 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 	if _ask and _ask.visible and (st.get("state", "") != "class" or director.round_over):
 		close_questions()
 	_refresh_phone(director, me, st, delta)
+	_refresh_mic(st)
 	_update_route(director, me, st)
 	_update_warning(cam, st, delta)
 	var heat := int(director.world.get("heat", 1))

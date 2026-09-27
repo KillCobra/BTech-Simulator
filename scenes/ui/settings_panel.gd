@@ -92,6 +92,7 @@ func _ready() -> void:
 	buttons.add_theme_constant_override("separation", 12)
 	add_child(buttons)
 	buttons.add_child(_button("CONTROLS", _show_controls, Color("9fd8ff")))
+	buttons.add_child(_button("VOICE", _show_voice, Color("b9e6a0")))
 	buttons.add_child(_button("BACK", closed.emit, Color("e7d2aa")))
 
 
@@ -201,6 +202,115 @@ func _close_controls() -> void:
 		_controls.queue_free()
 		remove_child(_controls)
 	_controls = null
+	for child in get_children():
+		child.visible = true
+
+
+# --- Voice chat ----------------------------------------------------------------------------------
+
+var _voice_page: VBoxContainer
+var _meter_fill: ColorRect
+var _meter_gate: ColorRect
+const METER_W := 380.0
+const METER_MAX := 0.12  # RMS at the right-hand end of the mic meter
+
+
+func _show_voice() -> void:
+	for child in get_children():
+		child.visible = false
+	var voice: Node = get_node_or_null("/root/Voice")
+	if voice:
+		voice.monitoring = true
+	_voice_page = VBoxContainer.new()
+	_voice_page.add_theme_constant_override("separation", 10)
+	add_child(_voice_page)
+	var heading := Label.new()
+	heading.text = "VOICE CHAT"
+	heading.add_theme_font_size_override("font_size", 28)
+	heading.add_theme_color_override("font_color", GOLD)
+	_voice_page.add_child(heading)
+	var about := _caption("Proximity voice: friends hear you from where you stand, quieter down the corridor, muffled through walls. Teachers hear HOW LOUD you are (never what you say): whisper when you hide. Wear headphones so your mic doesn't pick up the game.")
+	about.autowrap_mode = TextServer.AUTOWRAP_WORD
+	about.custom_minimum_size.x = 600
+	_voice_page.add_child(about)
+	var input: Node = get_node("/root/GameInput")
+	var mode := OptionButton.new()
+	for item in ["Open mic (talks when it hears you)", "Push to talk [%s]" % input.key_label("push_to_talk"), "Mic off (still hear friends)"]:
+		mode.add_item(item)
+	mode.select(int(_s.voice_mode))
+	mode.item_selected.connect(func(i: int): _s.set_value("voice_mode", i))
+	_style_picker(mode)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 20)
+	_voice_page.add_child(row)
+	var mode_field := _field("MIC", mode)
+	mode_field.custom_minimum_size.x = 300
+	row.add_child(mode_field)
+	var device := OptionButton.new()
+	var devices := AudioServer.get_input_device_list()
+	for d in devices:
+		device.add_item(d)
+	device.select(maxi(0, devices.find(str(_s.mic_device))))
+	device.item_selected.connect(func(i: int): _s.set_value("mic_device", devices[i]))
+	_style_picker(device)
+	var device_field := _field("MICROPHONE", device)
+	device_field.custom_minimum_size.x = 300
+	row.add_child(device_field)
+	var sliders := HBoxContainer.new()
+	sliders.add_theme_constant_override("separation", 20)
+	_voice_page.add_child(sliders)
+	var gate := _slider_row("OPEN MIC STARTS AT", "mic_gate", 2, 80, 1, 1000.0, "%d")
+	gate.custom_minimum_size.x = 300
+	sliders.add_child(gate)
+	var vol := _slider_row("FRIENDS' VOICES", "voice_volume", 0, 100, 1, 100.0, "%d%%")
+	vol.custom_minimum_size.x = 300
+	sliders.add_child(vol)
+	_voice_page.add_child(_caption("SAY SOMETHING: the bar should cross the white line when you talk, not when you're quiet."))
+	var meter := ColorRect.new()
+	meter.color = TRACK
+	meter.custom_minimum_size = Vector2(METER_W, 16)
+	_voice_page.add_child(meter)
+	_meter_fill = ColorRect.new()
+	_meter_fill.color = Color("7fe0a0")
+	_meter_fill.size = Vector2(0, 16)
+	meter.add_child(_meter_fill)
+	_meter_gate = ColorRect.new()
+	_meter_gate.color = Color.WHITE
+	_meter_gate.size = Vector2(3, 22)
+	_meter_gate.position.y = -3
+	meter.add_child(_meter_gate)
+	var buttons := HBoxContainer.new()
+	buttons.add_child(_button("DONE", _close_voice, Color("e7d2aa")))
+	_voice_page.add_child(buttons)
+
+
+func _process(_delta: float) -> void:
+	if not is_instance_valid(_voice_page) or not is_instance_valid(_meter_fill):
+		return
+	var voice: Node = get_node_or_null("/root/Voice")
+	if voice == null:
+		return
+	# The meter reads the mic even out of a session (the Voice autoload always listens).
+	var lvl: float = voice.level
+	_meter_fill.size.x = METER_W * clampf(lvl / METER_MAX, 0.0, 1.0)
+	_meter_fill.color = Color("7fe0a0") if lvl >= float(_s.mic_gate) else Color(1, 1, 1, 0.35)
+	_meter_gate.position.x = METER_W * clampf(float(_s.mic_gate) / METER_MAX, 0.0, 1.0)
+
+
+func _exit_tree() -> void:
+	var voice: Node = get_node_or_null("/root/Voice")
+	if voice and is_instance_valid(_voice_page):
+		voice.monitoring = false
+
+
+func _close_voice() -> void:
+	var voice: Node = get_node_or_null("/root/Voice")
+	if voice:
+		voice.monitoring = false
+	if is_instance_valid(_voice_page):
+		_voice_page.queue_free()
+		remove_child(_voice_page)
+	_voice_page = null
 	for child in get_children():
 		child.visible = true
 

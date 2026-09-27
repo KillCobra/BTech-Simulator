@@ -110,7 +110,7 @@ func _on_lobby_map_changed() -> void:
 		_map_about.text = _map_blurb()
 	if is_instance_valid(_map_name):
 		var shown := "Random" if Network.map_choice == Maps.RANDOM else ("Daily challenge" if Network.map_choice == Network.DAILY else Maps.title(Network.map_choice))
-		_map_name.text = "MAP:  %s   ·   %s" % [shown, "RACE: first out wins" if Network.game_mode == "race" else "CLASS: escape together"]
+		_map_name.text = "MAP:  %s   ·   %s   ·   staff hear voices: %s" % [shown, "RACE: first out wins" if Network.game_mode == "race" else "CLASS: escape together", "ON" if Network.staff_hear else "OFF"]
 	_show_map_preview()
 
 
@@ -507,7 +507,21 @@ func _show_lobby() -> void:
 		row.add_child(map_field)
 		row.add_child(_field("ROUND LENGTH", length))
 		box.add_child(row)
-		box.add_child(_field("MODE", mode))
+		var hear := OptionButton.new()
+		hear.add_item("Staff hear voice chat: ON")
+		hear.add_item("Staff hear voice chat: OFF")
+		hear.select(0 if Network.staff_hear else 1)
+		hear.item_selected.connect(func(i: int): Network.set_staff_hear(i == 0))
+		hear.tooltip_text = "ON: teachers hear how loud you talk (whisper!). OFF: voice chat is just for friends."
+		var mode_row := HBoxContainer.new()
+		mode_row.add_theme_constant_override("separation", 12)
+		var mode_field := _field("MODE", mode)
+		mode_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mode_row.add_child(mode_field)
+		var hear_field := _field("VOICE", hear)
+		hear_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mode_row.add_child(hear_field)
+		box.add_child(mode_row)
 	else:
 		_map_name = Label.new()
 		_map_name.add_theme_font_size_override("font_size", 17)

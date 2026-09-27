@@ -168,6 +168,8 @@ func _ready() -> void:
 	small.replication_config = small_config
 	Network.add_join_filter(small)
 	add_child(small)
+	if multiplayer.is_server():
+		Voice.heard.connect(_on_voice)
 
 
 # --- Setup ---------------------------------------------------------------------------------
@@ -567,11 +569,11 @@ func request(action: String, args: Dictionary) -> void:
 	if p == null or not status.has(id):
 		return
 	var st: Dictionary = status[id]
-	if st.state == "detention" and action not in ["ping", "essay"]:
+	if st.state == "detention" and action not in ["ping", "essay", "shout"]:
 		return
 	# Out of the university: you can still ping, trade, boost a friend and throw paper
 	# balls back over the wall to pull staff away from friends still inside.
-	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver", "outside_bell"]:
+	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver", "outside_bell", "shout"]:
 		return
 	match action:
 		"interact": _on_interact(id, p, int(args.get("i", -1)))
@@ -596,6 +598,7 @@ func request(action: String, args: Dictionary) -> void:
 		"deliver": _on_deliver(id, int(args.get("to", -1)))
 		"outside_bell": _on_outside_bell(id, p)
 		"give": _on_give(id, p, int(args.get("to", -1)), int(args.get("cash", 0)), int(args.get("slot", -1)))
+		"shout": _on_shout(id, p, int(args.get("k", 0)))
 
 
 @rpc("authority", "call_local", "reliable")
@@ -1571,6 +1574,152 @@ func _noise(pos: Vector3, radius: float) -> int:
 	return pulled
 
 
+# --- Voices: staff hear your microphone (how loud, never what you say) ------------------------------
+
+const VOICE_WINDOW := 0.3  # seconds of mic frames judged together
+## Quick shouts for players without a mic (B): [text, how far staff hear it (m)].
+const SHOUT_LIST := [["Psst!", 2.0], ["RUN!", 13.0], ["Over here!", 10.0], ["HELP!", 13.0]]
+const HUSH_LINES := ["Who's talking?!", "I HEARD that.", "Something funny back there?", "Is someone chatting in MY class?"]
+const QUIET_LINES := ["Quiet at the back, %s!", "%s! Do you want to share it with the whole class?", "Not a word, %s.", "%s, one more sound and you're out."]
+const HEARD_LINES := ["I heard that.", "Who's there?", "Is someone talking out there?!", "I can hear you, you know!", "Hello? Who's that?"]
+
+var _voice_peak := {}  # peer id -> loudest mic frame in the current window
+var _voice_t := 0.0
+
+
+## Mic frame from the Voice autoload (host).
+func _on_voice(id: int, rms: float) -> void:
+	_voice_peak[id] = maxf(float(_voice_peak.get(id, 0.0)), rms)
+
+
+func _voice_step(delta: float) -> void:
+	_voice_t += delta
+	if _voice_t < VOICE_WINDOW:
+		return
+	_voice_t = 0.0
+	for id in _voice_peak:
+		_heard(int(id), voice_radius(float(_voice_peak[id])))
+	_voice_peak.clear()
+
+
+## How far staff hear a voice this loud (RMS of the mic): 0 = not at all. A whisper
+## carries a metre or two, talking about 7 m, a yell right down the corridor.
+static func voice_radius(rms: float) -> float:
+	var db := 20.0 * log(maxf(rms, 0.00001)) / log(10.0)
+	if db < -46.0:
+		return 0.0
+	return clampf(1.5 + (db + 42.0) * 0.5, 1.0, 16.0)
+
+
+func _hear_voices() -> bool:
+	return bool(_rules.get("hear", true))
+
+
+## Staff within `radius` of player `id` (same floor, half as far through a wall) react
+## to the noise they made: talking in class turns the teacher round, talking where you
+## shouldn't be brings staff to look, talking in a locker gives you away.
+func _heard(id: int, radius: float) -> void:
+	if radius <= 0.0 or not _hear_voices() or not status.has(id) or round_over or not _started:
+		return
+	var p: Node3D = players_root.get_node_or_null(str(id))
+	if p == null:
+		return
+	var st: Dictionary = status[id]
+	if st.state == "detention":
+		if radius >= 9.0 and _cooldown(id, "hush_detention", 6.0):
+			st.timer = minf(float(st.timer) + 3.0, 90.0)
+			_tell(id, "\"SILENCE in detention!\"  (+3 s)", Color("ff9a4a"))
+		return
+	if st.state not in ["class", "chased"]:
+		return
+	var pos := p.global_position
+	var near: Array = []
+	for b in _brains:
+		if b.role == "extra" or _stunned(b) or _distracted(b) or b.state == "evacuate" or b.npc.name == "Uncle":
+			continue
+		var npc: Node = b.npc
+		if absf(npc.global_position.y - pos.y) > FLOOR_REACH:
+			continue
+		var reach: float = radius * float(b.get("ears", 1.0))
+		var d: float = npc.global_position.distance_to(pos)
+		if d > reach or (d > reach * 0.5 and not _within_reach(p, npc)):
+			continue
+		near.append(b)
+	var reacted := false
+	for b in near:
+		if _cooldown(id, "heard:%s" % b.npc.name, 4.0) and _heard_by(b, id, p, st, radius):
+			reacted = true
+	if reacted:
+		_stat(id, "heard")
+		_moment("heard", id)
+		print("[%.1f] staff heard %s (%.0f m): %s" % [elapsed, _name(id), radius, (near[0].npc as Node).speech])
+
+
+## One staff member heard `id`. Returns whether they did something about it.
+func _heard_by(b: Dictionary, id: int, p: Node3D, st: Dictionary, radius: float) -> bool:
+	var npc: Node = b.npc
+	var pos := p.global_position
+	if b.state == "chase":
+		if b.target == id and p.hidden and not b.get("saw_hide", false):
+			b.saw_hide = true
+			b.hide_judged = true
+			npc.say("I can HEAR you in there! Out!", 2.5)
+			return true
+		return false
+	if p.hidden:
+		# In a locker or a stall, and not quiet about it: they know exactly where you are.
+		npc.say("Who's in there?! I can hear you!", 2.5)
+		st.sus = 100.0
+		if b.chaser:
+			_start_chase(b, id, pos)
+			b.saw_hide = true
+			b.hide_judged = true
+		else:
+			_call_help(id, pos, npc.display_name)
+		_log("%s heard %s hiding!" % [npc.display_name, _name(id)])
+		return true
+	var own: bool = b.role == "teacher" and b.room == current_room(id) and campus.room_of(pos) == b.room
+	if own:
+		if elapsed < float(world.passing_until) or radius < 4.0:
+			return false  # chatting between classes, or a whisper: fine
+		if b.state == "write":
+			# Back to the class, writing on the board... and someone laughs.
+			b.state = "watch"
+			b.timer = 4.0
+			npc.say(HUSH_LINES[_rng.randi() % HUSH_LINES.size()], 2.2)
+			return true
+		if b.state in ["watch", "stare", "patrol"]:
+			st.sus = minf(99.0, float(st.sus) + 4.0 + radius)
+			npc.say(QUIET_LINES[_rng.randi() % QUIET_LINES.size()] % _name(id), 2.5)
+			npc.stop(npc.yaw_towards(pos - npc.global_position))
+			return true
+		return false
+	if b.role == "sitter" and b.npc.name == "Librarian":
+		npc.say("SHHH! This is a LIBRARY.", 2.0)
+	if not _suspicious(id, p, b):
+		return false  # somewhere you're allowed to be: talk all you like
+	if b.state in ["attendance", "handout", "investigate", "stare"]:
+		npc.stop(npc.yaw_towards(pos - npc.global_position))
+		return false
+	b.resume = b.state
+	b.state = "investigate"
+	b.timer = 3.5
+	npc.alert = 1
+	npc.pose = 0
+	npc.say(HEARD_LINES[_rng.randi() % HEARD_LINES.size()], 2.0)
+	npc.go_to(_path(npc.global_position, pos), b.walk * 1.5)
+	return true
+
+
+## A quick shout (no mic needed): everyone sees it over your head, staff hear it.
+func _on_shout(id: int, p: Node3D, k: int) -> void:
+	if not _cooldown(id, "shout", 1.5):
+		return
+	var pick: Array = SHOUT_LIST[clampi(k, 0, SHOUT_LIST.size() - 1)]
+	_fx_all("shout", p.global_position, "%d|%s" % [id, pick[0]])
+	_heard(id, float(pick[1]))
+
+
 # --- Main loop -------------------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
@@ -1635,6 +1784,7 @@ func _physics_process(delta: float) -> void:
 		_cctv_step(delta, players)
 	_update_balls()
 	_coin_step(players)
+	_voice_step(delta)
 	for id in players:
 		_update_player(id, players[id], delta)
 		if status[id].state != "class" or players[id].hidden:

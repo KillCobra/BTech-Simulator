@@ -11,6 +11,7 @@ const SECTION := "settings"
 const KEYS := [
 	"mouse_sensitivity", "fov", "master_volume", "music_volume", "sfx_volume",
 	"quality", "fullscreen", "player_name", "smooth_edges", "show_vision", "ui_size",
+	"voice_mode", "mic_gate", "voice_volume", "mic_device",
 ]
 
 enum Quality { LOW, MEDIUM, HIGH }
@@ -27,6 +28,12 @@ var ui_size := 2 ## In-game HUD size: 1 small, 2 normal, 3 large (HUD_SCALES).
 const HUD_SCALES := [1.0, 1.0, 1.25, 1.5]  # index = ui_size
 var show_vision := true ## Draw where staff can see: vision wedges on the minimap and the big map.
 var player_name := "Student"
+## Proximity voice (see the Voice autoload).
+enum VoiceMode { OPEN_MIC, PUSH_TO_TALK, OFF }
+var voice_mode := 0 ## 0 open mic (talks when it hears you), 1 push-to-talk, 2 mic off (you still hear others).
+var mic_gate := 0.012 ## Open mic: how loud you must be to transmit (RMS, 0.002 - 0.08). Lower = more sensitive.
+var voice_volume := 1.0 ## Friends' voices, linear 0 - 1.
+var mic_device := "Default"
 
 
 func _ready() -> void:
@@ -79,6 +86,9 @@ func apply() -> void:
 	_set_bus_volume("Master", master_volume)
 	_set_bus_volume("Music", music_volume)
 	_set_bus_volume("SFX", sfx_volume)
+	_set_bus_volume("Voice", voice_volume)
+	if mic_device in AudioServer.get_input_device_list() and AudioServer.input_device != mic_device:
+		AudioServer.input_device = mic_device
 	if DisplayServer.get_name() != "headless" and _window_ready:
 		var want := DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
 		var mode := DisplayServer.window_get_mode()
@@ -129,6 +139,14 @@ func _assign(key: String, value: Variant) -> void:
 			show_vision = bool(value)
 		"ui_size":
 			ui_size = clampi(int(value), 1, 3)
+		"voice_mode":
+			voice_mode = clampi(int(value), 0, 2)
+		"mic_gate":
+			mic_gate = clampf(float(value), 0.002, 0.08)
+		"voice_volume":
+			voice_volume = clampf(float(value), 0.0, 1.0)
+		"mic_device":
+			mic_device = str(value) if str(value) != "" else "Default"
 		"player_name":
 			var s := str(value).strip_edges()
 			player_name = s if not s.is_empty() else "Student"
