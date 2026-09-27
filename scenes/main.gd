@@ -41,22 +41,42 @@ func _ready() -> void:
 	Network.local_info.name = Settings.player_name
 	Network.local_info.look = _load_look()
 	_fit_window()
-	_load_world(true)
 	_show_menu("")
+	# Draw the menu first, then go fullscreen (if chosen), then build the map behind it.
+	# Building takes a moment; the window mustn't sit half-drawn meanwhile (the old
+	# splash in a corner and a black slab round it).
+	await _drawn()
+	Settings.window_ready()
+	await _drawn()
+	_load_world(true)
 	_apply_dev_args()
 
 
-## The menu needs about 880 px of height: open the window that tall (it's 720
-## in the project settings), but never taller than the screen's free area.
+## Waits until the current frame has been drawn (headless: one frame).
+func _drawn() -> void:
+	if DisplayServer.get_name() == "headless":
+		await get_tree().process_frame
+	else:
+		await RenderingServer.frame_post_draw
+
+
+## The menus are laid out for 1280 x 880 (the project's base size; the UI scales with
+## the window). The window opens at its project size straight away, so nothing jumps
+## after the splash; it only shrinks here on a screen too small for it.
 const WINDOW_SIZE := Vector2i(1280, 880)
 
 
 func _fit_window() -> void:
-	if DisplayServer.get_name() == "headless" or Settings.fullscreen 			or DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+	if DisplayServer.get_name() == "headless" or Settings.fullscreen \
+			or DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
 		return
 	var screen := DisplayServer.window_get_current_screen()
 	var free := DisplayServer.screen_get_usable_rect(screen)
-	var want := Vector2i(mini(WINDOW_SIZE.x, free.size.x), mini(WINDOW_SIZE.y, free.size.y - 40))
+	var size := DisplayServer.window_get_size()
+	if size.x <= free.size.x and size.y <= free.size.y - 40:
+		return
+	var fit := minf(float(free.size.x) / size.x, float(free.size.y - 40) / size.y)
+	var want := Vector2i(Vector2(size) * fit)
 	DisplayServer.window_set_size(want)
 	DisplayServer.window_set_position(free.position + (free.size - want) / 2)
 

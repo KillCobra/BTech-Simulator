@@ -51,6 +51,14 @@ func _ready() -> void:
 	_style_picker(quality)
 	left.add_child(_field("GRAPHICS", quality))
 
+	var hud_size := OptionButton.new()
+	for item in ["1  Small", "2  Normal", "3  Large"]:
+		hud_size.add_item(item)
+	hud_size.select(int(_s.ui_size) - 1)
+	hud_size.item_selected.connect(func(i: int): _s.set_value("ui_size", i + 1))
+	_style_picker(hud_size)
+	right.add_child(_field("HUD SIZE (IN GAME)", hud_size))
+
 	var full := CheckButton.new()
 	full.text = "FULLSCREEN"
 	full.button_pressed = bool(_s.fullscreen)

@@ -10,7 +10,7 @@ const SECTION := "settings"
 ## Keys that are saved/loaded, in file order.
 const KEYS := [
 	"mouse_sensitivity", "fov", "master_volume", "music_volume", "sfx_volume",
-	"quality", "fullscreen", "player_name", "smooth_edges", "show_vision",
+	"quality", "fullscreen", "player_name", "smooth_edges", "show_vision", "ui_size",
 ]
 
 enum Quality { LOW, MEDIUM, HIGH }
@@ -23,12 +23,26 @@ var sfx_volume := 0.9 ## Linear 0 - 1.
 var quality := 2 ## 0 Low, 1 Medium, 2 High.
 var fullscreen := false
 var smooth_edges := false ## Temporal anti-aliasing: no edge shimmer, slightly softer in motion.
+var ui_size := 2 ## In-game HUD size: 1 small, 2 normal, 3 large (HUD_SCALES).
+const HUD_SCALES := [1.0, 1.0, 1.25, 1.5]  # index = ui_size
 var show_vision := true ## Draw where staff can see: vision wedges on the minimap and the big map.
 var player_name := "Student"
 
 
 func _ready() -> void:
 	load_settings()
+	apply()
+
+
+## At launch the window only goes fullscreen once the menu has been drawn: switching
+## any earlier leaves the old splash in one corner and black around it until the
+## first frame (a "black slab" while the menu scene loads).
+var _window_ready := false
+
+
+## Called by the menu once it's on screen: from now on the window follows `fullscreen`.
+func window_ready() -> void:
+	_window_ready = true
 	apply()
 
 
@@ -65,7 +79,7 @@ func apply() -> void:
 	_set_bus_volume("Master", master_volume)
 	_set_bus_volume("Music", music_volume)
 	_set_bus_volume("SFX", sfx_volume)
-	if DisplayServer.get_name() != "headless":
+	if DisplayServer.get_name() != "headless" and _window_ready:
 		var want := DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
 		var mode := DisplayServer.window_get_mode()
 		var is_full := mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
@@ -113,6 +127,8 @@ func _assign(key: String, value: Variant) -> void:
 			smooth_edges = bool(value)
 		"show_vision":
 			show_vision = bool(value)
+		"ui_size":
+			ui_size = clampi(int(value), 1, 3)
 		"player_name":
 			var s := str(value).strip_edges()
 			player_name = s if not s.is_empty() else "Student"

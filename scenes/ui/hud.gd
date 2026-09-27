@@ -273,6 +273,7 @@ var _route_at := -100.0      # when the route was worked out (s)
 var _route_until := -100.0   # glimpse shown until (s)
 var _trail: Node3D
 var _floor_label: Label
+var _frame: Control  # HUD panels go in here, scaled by the HUD size setting
 var _floor_seen := -1
 var _floor_flash := 0.0
 # Heat, the round intro, style pop-ups, the spotted warning and the escape moment.
@@ -292,6 +293,15 @@ var _dev_shop := false
 
 func _ready() -> void:
 	add_to_group("hud")
+	# HUD size setting: panels, cards, phone, tests... live in a frame that is scaled up.
+	# Things tied to screen / 3D positions (vignette, ping markers, crosshair) stay outside.
+	_frame = Control.new()
+	_frame.name = "Frame"
+	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_frame)
+	get_viewport().size_changed.connect(_fit_frame)
+	Settings.changed.connect(_fit_frame)
+	_fit_frame()
 	# Danger vignette first, so all HUD elements draw on top of it.
 	_vignette = ColorRect.new()
 	_vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -317,7 +327,7 @@ func _ready() -> void:
 	_dot = dot
 
 	_locker = _build_locker_overlay()
-	add_child(_locker)
+	_frame.add_child(_locker)
 
 	_build_left_column()
 	_build_meter()
@@ -329,14 +339,14 @@ func _ready() -> void:
 	_feed.position = Vector2(-420, 214)
 	_feed.custom_minimum_size = Vector2(400, 0)
 	_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_feed)
+	_frame.add_child(_feed)
 
 	_hint = _outlined("", 22)
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_hint.position.y -= 185  # above the item slots
 	_hint.add_theme_color_override("font_color", Color("ffd24a"))
-	add_child(_hint)
+	_frame.add_child(_hint)
 
 	var controls := _outlined("", 14)
 	var keys_text := func():
@@ -351,7 +361,7 @@ func _ready() -> void:
 	controls.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	controls.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	controls.position.y -= 30
-	add_child(controls)
+	_frame.add_child(controls)
 	_keys_line = controls
 
 	_charge = _outlined("", 18)
@@ -359,14 +369,14 @@ func _ready() -> void:
 	_charge.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_charge.position.y += 30
 	_charge.add_theme_color_override("font_color", Color("ff9a3c"))
-	add_child(_charge)
+	_frame.add_child(_charge)
 
 	_toast = _outlined("", 26)
 	_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_toast.position.y += 70
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(_toast)
+	_frame.add_child(_toast)
 
 	_board = PanelContainer.new()
 	_board.add_theme_stylebox_override("panel", _card(Color(0.08, 0.08, 0.14, 0.9), 16, 20))
@@ -377,12 +387,12 @@ func _ready() -> void:
 	_board.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_board.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_board.visible = false
-	add_child(_board)
+	_frame.add_child(_board)
 
 	_edge = EdgePulse.new()
 	_edge.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_edge)
+	add_child(_edge)  # screen effect: not scaled with the HUD
 	move_child(_edge, 1)  # over the vignette, under everything else
 
 	_style_box = VBoxContainer.new()
@@ -390,7 +400,7 @@ func _ready() -> void:
 	_style_box.position += Vector2(90, -120)
 	_style_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_style_box.add_theme_constant_override("separation", 2)
-	add_child(_style_box)
+	_frame.add_child(_style_box)
 
 	_escape_big = _outlined("", 64)
 	_escape_big.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -400,10 +410,22 @@ func _ready() -> void:
 	_escape_big.position.y -= 150
 	_escape_big.add_theme_color_override("font_color", Color("7fe0a0"))
 	_escape_big.visible = false
-	add_child(_escape_big)
+	_frame.add_child(_escape_big)
 
 	_build_dialog()
 	_build_end_screen()
+
+
+## Frame = the screen at 1/scale, drawn `scale` times bigger.
+func _fit_frame() -> void:
+	var size := int(Settings.ui_size)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--hudsize="):  # dev: screenshots at a HUD size without saving it
+			size = int(arg.trim_prefix("--hudsize="))
+	var s: float = Settings.HUD_SCALES[clampi(size, 1, 3)]
+	_frame.scale = Vector2(s, s)
+	_frame.position = Vector2.ZERO
+	_frame.size = get_viewport().get_visible_rect().size / s
 
 
 func _build_left_column() -> void:
@@ -411,7 +433,7 @@ func _build_left_column() -> void:
 	column.position = Vector2(20, 20)
 	column.add_theme_constant_override("separation", 10)
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(column)
+	_frame.add_child(column)
 
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", _card(Color(0.08, 0.08, 0.14, 0.72)))
@@ -470,7 +492,7 @@ func _build_meter() -> void:
 	card.position = Vector2(-300, 20)
 	card.custom_minimum_size = Vector2(280, 0)
 	card.add_theme_stylebox_override("panel", _card(Color(0.08, 0.08, 0.14, 0.72)))
-	add_child(card)
+	_frame.add_child(card)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	card.add_child(box)
@@ -519,7 +541,7 @@ func _build_meter() -> void:
 	_badges.alignment = BoxContainer.ALIGNMENT_END
 	_badges.add_theme_constant_override("separation", 6)
 	_badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_badges)
+	_frame.add_child(_badges)
 
 
 func _build_banner() -> void:
@@ -528,7 +550,7 @@ func _build_banner() -> void:
 	column.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	column.position.y = 22
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(column)
+	_frame.add_child(column)
 	# Which floor you're on: faint, brightens for a moment when you change floors.
 	_floor_label = _outlined("", 17)
 	_floor_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -556,7 +578,7 @@ func _build_inventory() -> void:
 	row.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	row.position = Vector2(20, -150)
 	row.add_theme_constant_override("separation", 8)
-	add_child(row)
+	_frame.add_child(row)
 	_inv_row = row
 	for i in 3:
 		var slot := Label.new()
@@ -615,7 +637,7 @@ func _build_dialog() -> void:
 	_dialog.position.y -= 50  # item slots and key hints hide while it's up
 	_dialog.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_dialog.visible = false
-	add_child(_dialog)
+	_frame.add_child(_dialog)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
 	_dialog.add_child(col)
@@ -661,7 +683,7 @@ func _build_end_screen() -> void:
 	_end.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_end.custom_minimum_size = Vector2(880, 0)
 	_end.visible = false
-	add_child(_end)
+	_frame.add_child(_end)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 14)
 	_end.add_child(box)
@@ -717,7 +739,7 @@ func setup_map(campus: RefCounted) -> void:
 	holder.position = Vector2(-262, -292)
 	holder.size = Vector2(240, 270)
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(holder)
+	_frame.add_child(holder)
 	var mask := MapView.RoundMask.new()
 	mask.size = Vector2(240, 240)
 	mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -750,7 +772,7 @@ func setup_map(campus: RefCounted) -> void:
 	_big.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_big.visible = false
 	_big.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_big)
+	_frame.add_child(_big)
 	var shade := ColorRect.new()
 	shade.color = Color(0.03, 0.03, 0.08, 0.86)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -820,7 +842,7 @@ func setup_map(campus: RefCounted) -> void:
 			for v in OS.get_cmdline_user_args():
 				if v.begins_with("--variant="):  # dev: which of the subject's papers
 					game.variant = int(v.trim_prefix("--variant="))
-			add_child(game)
+			_frame.add_child(game)
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		if arg.begins_with("--phone="):  # dev: --phone=-1..6 opens the home screen / that phone app
 			_phone_app = int(arg.trim_prefix("--phone="))
@@ -1017,7 +1039,7 @@ func _refresh_timetable(director: Node, me: Node, st: Dictionary, room: int, now
 			game.visible = false
 			if should_capture():
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED)
-		add_child(game)
+		_frame.add_child(game)
 		_exam = game
 		close_questions()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -1085,7 +1107,7 @@ func open_essay() -> void:
 		_essay.offset_top = -125
 		_essay.offset_bottom = 125
 		_essay.add_to_group("modal_ui")
-		add_child(_essay)
+		_frame.add_child(_essay)
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", 12)
 		_essay.add_child(col)
@@ -1250,7 +1272,7 @@ func open_questions() -> void:
 		_ask.offset_left = 72
 		_ask.offset_right = 72
 		_ask.add_to_group("modal_ui")
-		add_child(_ask)
+		_frame.add_child(_ask)
 	for c in _ask.get_children():
 		_ask.remove_child(c)
 		c.queue_free()
@@ -1359,7 +1381,7 @@ func _build_phone() -> void:
 	_phone.offset_bottom = -40
 	_phone.add_to_group("modal_ui")
 	_phone.visible = false
-	add_child(_phone)
+	_frame.add_child(_phone)
 	var screen := PanelContainer.new()
 	screen.add_theme_stylebox_override("panel", _card(Color("1f2a3a"), 16, 12))
 	_phone.add_child(screen)
@@ -1758,7 +1780,7 @@ func _open_help_exam(director: Node, to: int, room: int) -> void:
 		game.queue_free()
 		if should_capture():
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED)
-	add_child(game)
+	_frame.add_child(game)
 	_exam = game
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -1967,7 +1989,7 @@ func open_shop() -> void:
 		_shop.grow_vertical = Control.GROW_DIRECTION_BOTH
 		_shop.custom_minimum_size = Vector2(560, 0)
 		_shop.add_to_group("modal_ui")
-		add_child(_shop)
+		_frame.add_child(_shop)
 		_shop_body = VBoxContainer.new()
 		_shop_body.add_theme_constant_override("separation", 8)
 		_shop.add_child(_shop_body)
@@ -2188,7 +2210,7 @@ func _show_intro() -> void:
 	_intro.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_intro.position.y += 150
 	_intro.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_intro)
+	_frame.add_child(_intro)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	_intro.add_child(box)
@@ -2625,7 +2647,7 @@ func _show_results(results: Array) -> void:
 	if _exam:
 		_exam.queue_free()
 		_exam = null
-	move_child(_end, get_child_count() - 1)
+	_frame.move_child(_end, _frame.get_child_count() - 1)
 
 
 ## Your progress this round (applied to the saved profile once): XP, stars, best time, Rs saved.

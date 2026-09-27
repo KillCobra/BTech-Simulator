@@ -110,6 +110,8 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
   shakes and the line is wiped: try again. Afterwards you walk back to class yourself (60 s grace); your teacher scolds you and gets
   stricter (notices more, less wiggle room at your seat). Sit nicely for 45 s to calm them down a notch.
 - **Controls:** Settings → CONTROLS to rebind any key.
+- **HUD size:** Settings → HUD SIZE: 1 Small, 2 Normal (default), 3 Large. The whole UI also scales with the window
+  (it's laid out for 1280 x 880 and opens at 1440 x 990).
 
 ## How to bunk
 - Stay near your seat while your teacher faces the class; move when they turn to the board.
@@ -183,7 +185,7 @@ Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)
 (test bot) · `--autoready` · `--no-staff` · `--trace` · `--cam=x,y,z,tx,ty,tz` · `--shot=file.png --shot_delay=S` ·
 `--map=-2` (daily) · `--event=inspection|birthday|rain|power_cut|exam_week|none` · `--mode=race` · `--rule=no_pass|broke|speed` ·
 `--heat4` · `--stylepop` · `--warn` · `--spectate` · `--bell` · `--fresh-profile` (dev runs use `profile_test.cfg`) ·
-`--bigmap` · `--quit-at-end` · `--phone=-1..6` (home / an app) · `--helpbot` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
+`--bigmap` · `--quit-at-end` · `--phone=-1..6` (home / an app) · `--helpbot` · `--hudsize=1..3` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
 bot actions `!ask:0..2` `!examphoto`
 
 ## Not included
