@@ -269,6 +269,7 @@ func _show_voice() -> void:
 	var meter := ColorRect.new()
 	meter.color = TRACK
 	meter.custom_minimum_size = Vector2(METER_W, 16)
+	meter.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN  # exactly METER_W wide, so the white line sits right
 	_voice_page.add_child(meter)
 	_meter_fill = ColorRect.new()
 	_meter_fill.color = Color("7fe0a0")

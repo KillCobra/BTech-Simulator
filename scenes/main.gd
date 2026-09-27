@@ -404,6 +404,8 @@ func _show_menu(status: String) -> void:
 		_show_settings_in.call_deferred(panel, _show_menu.bind(""))
 		if OS.get_cmdline_user_args().has("--controls"):
 			(func(): panel.get_child(panel.get_child_count() - 1)._show_controls()).call_deferred()
+		if OS.get_cmdline_user_args().has("--voicepage"):
+			(func(): panel.get_child(panel.get_child_count() - 1)._show_voice()).call_deferred()
 
 	if status != "":
 		print("[menu] %s" % status)

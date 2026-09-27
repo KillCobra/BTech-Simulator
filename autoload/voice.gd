@@ -99,8 +99,17 @@ func _online() -> bool:
 			and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
 
+var _trace_t := 0.0
+
+
 func _process(delta: float) -> void:
 	_world = get_tree().get_first_node_in_group("world")
+	if OS.get_cmdline_user_args().has("--mic-trace"):
+		_trace_t += delta
+		if _trace_t > 1.0:
+			_trace_t = 0.0
+			print("[mic] capturing %s, level %.4f, frames waiting %d, sending %s" % [_mic_player != null and _mic_player.playing, level,
+				_capture.get_frames_available() if _capture else -1, transmitting])
 	_read_mic(delta)
 	while _pcm.size() >= FRAME:
 		var frame := _pcm.slice(0, FRAME)
