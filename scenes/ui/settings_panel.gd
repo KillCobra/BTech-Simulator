@@ -229,7 +229,7 @@ func _show_voice() -> void:
 	heading.add_theme_font_size_override("font_size", 28)
 	heading.add_theme_color_override("font_color", GOLD)
 	_voice_page.add_child(heading)
-	var about := _caption("Proximity voice: friends hear you from where you stand, quieter down the corridor, muffled through walls. Teachers hear HOW LOUD you are (never what you say): whisper when you hide. Wear headphones so your mic doesn't pick up the game.")
+	var about := _caption("Teachers hear HOW LOUD you are (never what you say): whisper when you hide. If the host turns on voice chat between players, friends hear you from where you stand, quieter down the corridor, muffled through walls; a phone call from an escaped friend always connects. Wear headphones so your mic doesn't pick up the game.")
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD
 	about.custom_minimum_size.x = 600
 	_voice_page.add_child(about)

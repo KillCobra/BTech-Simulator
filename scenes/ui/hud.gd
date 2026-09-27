@@ -266,6 +266,7 @@ var _phone_status: VBoxContainer  # home screen: class, what you're doing, money
 var _phone_time: Label
 var _phone_app := -1  # -1: home screen
 var _phone_tick := 0.0
+var _phone_busy := {}  # button text -> until when it shows "working on it" (just tapped)
 # Navigate: the route to your seat, its map on the phone, and the glimpse on the floor / minimap.
 var _nav_map: Control
 var _nav_info: Label
@@ -1414,6 +1415,13 @@ func _question_input(event: InputEvent) -> bool:
 
 ## Bottom-left: is your mic live, and how far could a teacher hear you right now?
 func _refresh_mic(st: Dictionary) -> void:
+	var director: Node = get_parent().get_node_or_null("Director")
+	var call := _my_call(director) if director else []
+	if not call.is_empty():
+		var who := str(Network.players.get(int(call[0]), {}).get("name", "Friend"))
+		_mic.text = "ON A CALL WITH %s  %s   (phone: hang up)" % [who.to_upper(), _clock(float(call[1]))]
+		_mic.add_theme_color_override("font_color", Color("7fe0a0"))
+		return
 	var mode := int(Settings.voice_mode)
 	var hear := bool(Network.round_rules.get("hear", true)) and str(st.get("state", "")) in ["class", "chased"]
 	var shout_key := GameInput.key_label("shout")
@@ -1427,7 +1435,7 @@ func _refresh_mic(st: Dictionary) -> void:
 		var warn := ""
 		if hear:
 			warn = "   staff hear you ~%d m" % int(round(r)) if r >= 4.0 else "   whisper: safe"
-		_mic.text = "● TALKING  %s%s" % ["|".repeat(bars), warn]
+		_mic.text = "● TALKING  %s%s%s" % ["|".repeat(bars), warn, "" if bool(Network.round_rules.get("voice", false)) else "   (friends' voice chat off)"]
 		_mic.add_theme_color_override("font_color", Color("ff6a5a") if hear and r >= 4.0 else Color("7fe0a0"))
 	elif mode == Settings.VoiceMode.PUSH_TO_TALK:
 		_mic.text = "[%s] push to talk   [%s] quick shout" % [GameInput.key_label("push_to_talk"), shout_key]
@@ -1674,8 +1682,8 @@ func _refresh_phone(director: Node, me: Node, st: Dictionary, delta: float) -> v
 		toggle_phone()
 		return
 	_phone_tick -= delta
-	if _phone_tick > 0.0:
-		return
+	if _phone_tick > 0.0 or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		return  # never rebuild the page under a finger that's mid-tap
 	_phone_tick = 0.25
 	var left: float = director.round_time - director.elapsed
 	_phone_time.text = _clock(left)
@@ -1718,7 +1726,21 @@ func _phone_button(text: String, handler: Callable, color := Color("7fd0ea"), en
 	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
 		b.add_theme_color_override(state, Color("2a1a0e"))
 	b.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.4))
-	b.pressed.connect(handler)
+	b.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS  # acts on the press itself: one tap is enough
+	if float(_phone_busy.get(text, 0.0)) > _now():
+		# Just tapped: show it's on its way until the page has news.
+		b.text = "...  " + text
+		b.disabled = true
+		b.add_theme_stylebox_override("disabled", _cached_card(color.darkened(0.25), 8, 6))
+		b.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.9))
+		return b
+	b.pressed.connect(func():
+		_phone_busy[text] = _now() + 1.2
+		Sfx.play("click", -4.0, 1.4)
+		b.text = "...  " + text
+		b.disabled = true
+		handler.call()
+		_phone_tick = 0.35)  # redraw soon, with the result
 	return b
 
 
@@ -1737,6 +1759,7 @@ func _fill_home(director: Node, st: Dictionary) -> void:
 	for c in _phone_status.get_children():
 		_phone_status.remove_child(c)
 		c.queue_free()
+	_call_screen(director, _phone_status)
 	var id := multiplayer.get_unique_id()
 	var now: float = director.elapsed
 	var room: int = director.current_room(id)
@@ -1803,7 +1826,47 @@ func _fill_home(director: Node, st: Dictionary) -> void:
 
 # --- Phone: Help Out (after you escape) ----------------------------------------------------------
 
+## [friend id, seconds left, seconds since it started] of the call you're on, or [].
+func _my_call(director: Node) -> Array:
+	var me := multiplayer.get_unique_id()
+	for c in director.things.get("calls", []):
+		var left := float(c[2]) - float(director.elapsed)
+		if left > 0.0 and (int(c[0]) == me or int(c[1]) == me):
+			return [int(c[1]) if int(c[0]) == me else int(c[0]), left, 40.0 - left]
+	return []
+
+
+## Top of the phone while you're on a call: who, ringing / connected, time left, hang up.
+func _call_screen(director: Node, into: VBoxContainer) -> void:
+	var call := _my_call(director)
+	if call.is_empty():
+		return
+	var who := str(Network.players.get(int(call[0]), {}).get("name", "Friend"))
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", _cached_card(Color("1f6a4a"), 12, 10))
+	into.add_child(card)
+	into.move_child(card, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	card.add_child(col)
+	var ringing := float(call[2]) < 2.0
+	var title := Label.new()
+	title.text = ("RINGING %s..." if ringing else "ON A CALL WITH %s") % who.to_upper()
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color("ffffff"))
+	col.add_child(title)
+	var sub := Label.new()
+	var talking := Voice.is_speaking(int(call[0]))
+	sub.text = "%s   %s left" % ["Connecting..." if ringing else ("%s is talking" % who if talking else "Voice connected: talk from anywhere"), _clock(float(call[1]))]
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.add_theme_color_override("font_color", Color("c9f5dd"))
+	col.add_child(sub)
+	var hang := _phone_button("Hang up", func(): director.request.rpc_id(1, "hangup", {}), Color("ff6a5a"))
+	col.add_child(hang)
+
+
 func _app_help(director: Node, me_node: Node, st: Dictionary) -> void:
+	_call_screen(director, _phone_body)
 	_phone_text("MISSION CONTROL", 15, Color("5fd3c5"))
 	if st.get("state", "") != "escaped":
 		_phone_text("Escape the university first. From outside you run mission control: text friends their test answers, prank-call the staff chasing them, send money and samosas, and track the staff.", 12, Color(1, 1, 1, 0.65))

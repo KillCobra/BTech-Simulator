@@ -225,10 +225,12 @@ func _down(from: int, packet: PackedByteArray) -> void:
 
 ## Host: is `listener` close enough to `speaker` to be worth sending the frame to?
 func _audible(speaker: int, listener: int) -> bool:
+	if linked(speaker, listener):
+		return true  # a phone call always goes through
+	if not Network.players_hear_each_other():
+		return false  # voice chat between players is off: the mic only reaches the staff
 	if _world == null or not Network.in_game:
 		return true  # the lobby: everyone hears everyone
-	if linked(speaker, listener):
-		return true
 	var players: Node = _world.get_node_or_null("Players")
 	var a: Node3D = players.get_node_or_null(str(speaker)) if players else null
 	var b: Node3D = players.get_node_or_null(str(listener)) if players else null
@@ -241,6 +243,8 @@ func _received(from: int, packet: PackedByteArray) -> void:
 		heard.emit(from, rms)
 	if from == multiplayer.get_unique_id() and not _echo:
 		return
+	if not Network.players_hear_each_other() and not linked(from, multiplayer.get_unique_id()) and not _echo:
+		return  # voice chat between players is off (the host still passed it to the staff above)
 	var out := _out(from)
 	var seq := packet[0] | (packet[1] << 8)
 	out.last = Time.get_ticks_msec() / 1000.0

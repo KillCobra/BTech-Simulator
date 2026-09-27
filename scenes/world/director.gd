@@ -610,12 +610,12 @@ func request(action: String, args: Dictionary) -> void:
 	if p == null or not status.has(id):
 		return
 	var st: Dictionary = status[id]
-	if st.state == "detention" and action not in ["ping", "essay", "shout"]:
+	if st.state == "detention" and action not in ["ping", "essay", "shout", "hangup"]:
 		return
 	# Out of the university: you can still ping, trade, boost a friend and throw paper
 	# balls back over the wall to pull staff away from friends still inside.
 	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver", "outside_bell", "shout",
-			"call_office", "announce", "open_gate", "call"]:
+			"call_office", "announce", "open_gate", "call", "hangup"]:
 		return
 	match action:
 		"interact": _on_interact(id, p, int(args.get("i", -1)))
@@ -646,6 +646,7 @@ func request(action: String, args: Dictionary) -> void:
 		"announce": _on_announce(id, int(args.get("k", 0)))
 		"open_gate": _on_remote_gate(id)
 		"call": _on_call(id, int(args.get("to", -1)))
+		"hangup": _on_hangup(id)
 		"trolley_off": _off_trolley(id)
 		"excuse": _on_excuse(id, p, int(args.get("k", -1)))
 		"vouch": _on_vouch(id, p, int(args.get("friend", -1)))
@@ -2320,13 +2321,29 @@ func _on_remote_gate(id: int) -> void:
 	_moment("gate", id)
 
 
+## Either side hangs up.
+func _on_hangup(id: int) -> void:
+	var list: Array = things.calls
+	for k in range(list.size() - 1, -1, -1):
+		var c: Array = list[k]
+		if int(c[0]) == id or int(c[1]) == id:
+			var other: int = int(c[1]) if int(c[0]) == id else int(c[0])
+			list.remove_at(k)
+			_tell(id, "Call ended.", Color("9fd8ff"))
+			_tell(other, "%s hung up." % _name(id), Color("9fd8ff"))
+
+
 ## Escaped: call a friend inside. Their phone RINGS (staff nearby hear it), then the
 ## two of you can talk from anywhere for 40 s.
 func _on_call(id: int, to: int) -> void:
 	var q: Node3D = players_root.get_node_or_null(str(to))
 	if q == null or not status.has(to) or status[to].state == "escaped" or to == id or status[id].state != "escaped":
 		return
-	if not _cooldown(id, "call", 60.0):
+	for c in things.calls:
+		if int(c[0]) == id or int(c[1]) == id or int(c[0]) == to or int(c[1]) == to:
+			_tell(id, "Somebody's already on a call. Hang up first.", Color("ffb37a"))
+			return
+	if not _cooldown(id, "call", 20.0):
 		_tell(id, "Your phone's cooling down. Try again in a bit.", Color("ffb37a"))
 		return
 	(things.calls as Array).append([id, to, elapsed + 40.0])
