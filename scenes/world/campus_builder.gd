@@ -223,11 +223,11 @@ func _chaos_props() -> void:
 		out.y = 0.0
 		out = out.normalized()
 		var side := out.cross(Vector3.UP).normalized()
-		var at := wall + side * 0.55 + out * 0.16
-		_vbox(at + Vector3(0, 0.6, 0), Vector3(0.2, 0.52, 0.2), Color("d8342c"))
-		_vbox(at + Vector3(0, 0.9, 0), Vector3(0.09, 0.1, 0.09), Color("26262e"))
-		_vbox(at + out * 0.1 + Vector3(0, 0.62, 0), Vector3(0.13, 0.15, 0.02), Color.WHITE)
-		_vbox(at - out * 0.12 + Vector3(0, 0.8, 0), Vector3(0.24, 0.06, 0.06), Color("3a3d47"))  # wall bracket
+		var at := wall + side * 0.55 + out * 0.3
+		_vbox(at + Vector3(0, 0.28, 0), Vector3(0.2, 0.52, 0.2), Color("d8342c"))  # stands on the floor by the alarm
+		_vbox(at + Vector3(0, 0.59, 0), Vector3(0.09, 0.1, 0.09), Color("26262e"))
+		_vbox(at + out * 0.1 + Vector3(0, 0.3, 0), Vector3(0.13, 0.15, 0.02), Color.WHITE)
+		_vbox(at + Vector3(0, 0.02, 0), Vector3(0.26, 0.04, 0.26), Color("3a3d47"))  # stand
 		interactables.append({"kind": "pickup", "item": "extinguisher", "pos": (it.pos as Vector3) + side * 0.55,
 			"label": "Take the fire extinguisher"})
 	var buckets: Array[Vector3] = []

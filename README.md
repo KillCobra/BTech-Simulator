@@ -184,7 +184,7 @@ Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)
 `--at=x,z` · `--walk=x,z;!interact;!use1;!proxy;!wait2;!stand;!coin;!counter;!buy:samosa;!give10;!giveslot0;!bump;...`
 (test bot) · `--autoready` · `--no-staff` · `--trace` · `--cam=x,y,z,tx,ty,tz` · `--shot=file.png --shot_delay=S` ·
 `--map=-2` (daily) · `--event=inspection|birthday|rain|power_cut|exam_week|none` · `--mode=race` · `--rule=no_pass|broke|speed` ·
-`--heat4` · `--stylepop` · `--warn` · `--spectate` · `--bell` · `--fresh-profile` (dev runs use `profile_test.cfg`) ·
+`--heat4` · `--stylepop` · `--nohud` (clean plates for trailers) · `--warn` · `--spectate` · `--bell` · `--fresh-profile` (dev runs use `profile_test.cfg`) ·
 `--bigmap` · `--quit-at-end` · `--phone=-1..6` (home / an app) · `--helpbot` · `--hudsize=1..3` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
 bot actions `!ask:0..2` `!examphoto`
 
