@@ -263,7 +263,7 @@ func _from_server() -> bool:
 
 
 func _toggle_locker(i: int) -> void:
-	if hidden and _director and float(_director.world.get("held", {}).get(str(_locker), -1.0)) > _director.elapsed:
+	if hidden and _director and float(_director.things.get("held", {}).get(str(_locker), -1.0)) > _director.elapsed:
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
 			hud.toast("It won't open! Someone's holding the door shut!", Color("ff9a4a"))

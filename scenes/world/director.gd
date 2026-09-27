@@ -114,9 +114,11 @@ var rooms := []   # per classroom: {"attendance_in", "calling", "exam_at", "exam
 var feed := []    # [{"t": elapsed, "text": String}]
 var marks := []   # [{"pos": Vector3, "npc": String, "by": String, "until": float}]
 var world := {"alarm_until": -100.0, "alarm_ready": 0.0, "gate_until": -100.0, "taken": {}, "stash": {},
-	"puddles": [], "clouds": [], "calls": [], "bucket_ready": {}, "held": {},
 	"period": 0, "periods": 3, "period_len": 160.0, "period_start": 0.0, "passing_until": -100.0, "coins": [],
 	"heat": 1, "heat_bumps": 0, "party_at": -1.0, "party_until": -100.0, "race_winner": -1, "race_end_at": -1.0}
+## Chaos on the floor: wet patches, smoke, phone calls, kicked buckets, held doors. Sent
+## reliably when it changes (the small `world` dict above must fit one unreliable packet).
+var things := {"puddles": [], "clouds": [], "calls": [], "bucket_ready": {}, "held": {}}
 var elapsed := 0.0
 var round_time := 480.0
 var round_over := false
@@ -167,7 +169,7 @@ func _ready() -> void:
 	big.name = "Sync"
 	big.delta_interval = 0.1
 	var config := SceneReplicationConfig.new()
-	for prop in [".:status", ".:rooms", ".:feed", ".:marks", ".:results", ".:awards", ".:replay"]:
+	for prop in [".:status", ".:rooms", ".:feed", ".:marks", ".:results", ".:awards", ".:replay", ".:things"]:
 		config.add_property(NodePath(prop))
 		config.property_set_replication_mode(NodePath(prop), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
 	big.replication_config = config
@@ -1234,10 +1236,10 @@ func _on_interact(id: int, p: Node3D, index: int) -> void:
 				_tell(id, "Hid the %s in the cistern. Nobody will find it here." % ITEMS.get(item, item), Color("9fd8ff"))
 		"bucket":
 			var key := str(index)
-			if float(world.bucket_ready.get(key, -1.0)) > elapsed:
+			if float(things.bucket_ready.get(key, -1.0)) > elapsed:
 				_tell(id, "Already on the floor. Mr. Mendes is NOT happy.", Color("ffb37a"))
 				return
-			world.bucket_ready[key] = elapsed + 60.0
+			things.bucket_ready[key] = elapsed + 60.0
 			_puddle(it.pos, 2.6, 45.0, id, "water")
 			_fx_all("splash", it.pos, "")
 			_noise(it.pos, 8.0)
@@ -1944,7 +1946,7 @@ func _knock(b: Dictionary, push: Vector3, seconds: float, by := -1) -> bool:
 
 
 func _puddle(pos: Vector3, radius: float, seconds: float, by: int, kind: String) -> void:
-	var list: Array = world.puddles
+	var list: Array = things.puddles
 	list.append({"p": pos, "r": radius, "until": elapsed + seconds, "by": by, "kind": kind})
 	while list.size() > 12:
 		list.pop_front()
@@ -1952,9 +1954,9 @@ func _puddle(pos: Vector3, radius: float, seconds: float, by: int, kind: String)
 
 func _chaos_step(players: Dictionary, _delta: float) -> void:
 	var now := elapsed
-	world.puddles = (world.puddles as Array).filter(func(pd): return float(pd.until) > now)
-	world.clouds = (world.clouds as Array).filter(func(c): return float(c.until) > now)
-	world.calls = (world.calls as Array).filter(func(c): return float(c[2]) > now)
+	things.puddles = (things.puddles as Array).filter(func(pd): return float(pd.until) > now)
+	things.clouds = (things.clouds as Array).filter(func(c): return float(c.until) > now)
+	things.calls = (things.calls as Array).filter(func(c): return float(c[2]) > now)
 	var ids: Array = players.keys()
 	# Two students sprinting into each other: both on the floor.
 	for i in ids.size():
@@ -1994,7 +1996,7 @@ func _chaos_step(players: Dictionary, _delta: float) -> void:
 			if int(id) != int(b.get("knocked_by", -1)) and (players[id] as Node3D).global_position.distance_to(at) < 0.9:
 				_tumble(id, push * 0.7 + Vector3.UP * 1.5, 1.1, "was flattened by a falling %s" % b.npc.display_name)
 	# Wet floors: sprint across one and you're on your back. So is a chasing teacher.
-	for pd: Dictionary in world.puddles:
+	for pd: Dictionary in things.puddles:
 		var at: Vector3 = pd.p
 		var r: float = pd.r
 		for id in ids:
@@ -2082,7 +2084,7 @@ func _spray(id: int, p: Node3D) -> void:
 	fwd.y = 0.0
 	fwd = fwd.normalized()
 	var at: Vector3 = p.global_position + fwd * 2.2
-	(world.clouds as Array).append({"p": at, "r": 3.2, "until": elapsed + 9.0})
+	(things.clouds as Array).append({"p": at, "r": 3.2, "until": elapsed + 9.0})
 	_puddle(at, 2.4, 30.0, id, "foam")
 	_fx_all("spray", p.global_position + Vector3(0, 1.2, 0), "%.2f,%.2f" % [fwd.x, fwd.z])
 	for b in _brains:
@@ -2249,7 +2251,7 @@ func _on_hold_door(id: int, p: Node3D, locker: int, friend: int) -> void:
 		return
 	if not _cooldown(id, "hold_door", 8.0):
 		return
-	world.held[str(locker)] = elapsed + 3.0
+	things.held[str(locker)] = elapsed + 3.0
 	_tell(friend, "The door won't open! %s is holding it shut!" % _name(id), Color("ff9a4a"))
 	_tell(id, "Holding %s in. Three seconds of pure evil." % _name(friend), Color("7fe0a0"))
 	_stat(id, "pranks")
@@ -2320,7 +2322,7 @@ func _on_call(id: int, to: int) -> void:
 	if not _cooldown(id, "call", 60.0):
 		_tell(id, "Your phone's cooling down. Try again in a bit.", Color("ffb37a"))
 		return
-	(world.calls as Array).append([id, to, elapsed + 40.0])
+	(things.calls as Array).append([id, to, elapsed + 40.0])
 	_fx_all("ring", q.global_position, str(to))
 	_heard(to, 7.0)  # *RING RING*
 	_tell(to, "%s is calling! You can talk to them from anywhere for 40 s. (Staff heard your phone...)" % _name(id), Color("7fe0a0"))
@@ -2719,6 +2721,7 @@ func _snapshot() -> void:
 	status = status.duplicate(true)
 	rooms = rooms.duplicate(true)
 	world = world.duplicate(true)
+	things = things.duplicate(true)
 	feed = feed.duplicate(true)
 	marks = marks.duplicate(true)
 
@@ -4000,7 +4003,7 @@ func _can_see_from(eye: Vector3, fwd: Vector3, p: Node3D, view_range: float, fov
 		var flat := Vector3(to.x, 0, to.z).normalized()
 		if fwd.dot(flat) < cos(deg_to_rad(fov_deg * 0.5)):
 			return false
-	for c: Dictionary in world.clouds:
+	for c: Dictionary in things.clouds:
 		if float(c.until) > elapsed and _segment_hits_sphere(eye, target, (c.p as Vector3) + Vector3(0, 1.1, 0), float(c.r)):
 			return false  # extinguisher smoke
 	var query := PhysicsRayQueryParameters3D.create(eye, target, 1)

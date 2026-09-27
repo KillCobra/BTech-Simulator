@@ -332,7 +332,7 @@ func linked(a: int, b: int) -> bool:
 	var director: Node = _world.get_node_or_null("Director")
 	if director == null:
 		return false
-	for c in director.world.get("calls", []):
+	for c in director.things.get("calls", []):
 		if float(c[2]) > float(director.elapsed) and ((int(c[0]) == a and int(c[1]) == b) or (int(c[0]) == b and int(c[1]) == a)):
 			return true
 	return false

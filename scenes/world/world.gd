@@ -350,7 +350,7 @@ var _puddle_nodes: Array[Node3D] = []
 
 ## Wet floors (and extinguisher foam) where the Director says they are.
 func _update_puddles(_t: float) -> void:
-	var list: Array = _director.world.get("puddles", [])
+	var list: Array = _director.things.get("puddles", [])
 	while _puddle_nodes.size() < list.size():
 		var root := Node3D.new()
 		var disc := MeshInstance3D.new()
@@ -572,6 +572,7 @@ func play_replay(clip: Dictionary) -> void:
 	add_child(_replay_cam)
 	_replay_cam.global_transform = _cctv_spot(focus)
 	_replay_cam.current = true
+	print("[replay] playing '%s' (%d frames, %d people)" % [clip.title, (clip.frames as Array).size(), _replay_puppets.size()])
 
 
 

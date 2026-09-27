@@ -245,6 +245,7 @@ var _replay_btn: Button
 var _replay_overlay: Control
 var _replay_label: Label
 var _replay_shown := false
+var _awards_count := -1
 var _style_cache := {}
 var _cash_label: Label
 var _slot_icons: Array[TextureRect] = []
@@ -2648,11 +2649,18 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 	if _board.visible:
 		_board_text.text = _scoreboard(director)
 	# Results can land a moment after round_over on a guest: redraw when they do.
-	if director.round_over and (not _end_shown or director.results.size() != _end_count):
+	if director.round_over and (not _end_shown or director.results.size() != _end_count or director.awards.size() != _awards_count):
 		_end_shown = true
 		_end_count = director.results.size()
+		_awards_count = director.awards.size()
+		print("[results] %d rows, %d awards, replay: %s" % [director.results.size(), director.awards.size(), not (director.replay as Dictionary).is_empty()])
 		_show_results(director.results)
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# The replay is the biggest thing the host sends: it can land after the results.
+	if director.round_over and _end_shown and not _replay_shown and not (director.replay as Dictionary).is_empty():
+		_replay_shown = true
+		_replay_btn.visible = true
+		_start_replay()
 
 
 ## Vignette strength follows how close you are to being caught: it creeps in
@@ -2869,9 +2877,6 @@ func _show_results(results: Array) -> void:
 	_end_list.add_child(tip)
 	if director and not (director.replay as Dictionary).is_empty():
 		_replay_btn.visible = true
-		if not _replay_shown:
-			_replay_shown = true
-			_start_replay.call_deferred()
 	_end.visible = true
 	if is_instance_valid(_intro):
 		_intro.queue_free()
