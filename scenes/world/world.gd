@@ -8,6 +8,7 @@ const Director := preload("res://scenes/world/director.gd")
 const PlayerScript := preload("res://scenes/player/player.gd")
 const NpcScript := preload("res://scenes/npc/npc.gd")
 const BallScript := preload("res://scenes/props/ball.gd")
+const TrolleyScript := preload("res://scenes/props/trolley.gd")
 const Hud := preload("res://scenes/ui/hud.gd")
 const P := preload("res://scripts/palette.gd")
 const Voxel := preload("res://scripts/voxel.gd")
@@ -197,6 +198,7 @@ func _update_props() -> void:
 		node.rotation.y = _director.cctv_yaw(cam, t)
 		node.get_child(0).get_node("Led").visible = int(t * 2.0) % 2 == 0 and not _power_cut
 	_update_coins(t)
+	_update_puddles(t)
 	var gate_open: bool = float(_director.world.gate_until) > t
 	var gate: Node3D = campus.service_gate
 	gate.visible = not gate_open
@@ -315,11 +317,150 @@ func _on_effect(kind: String, pos: Vector3, extra: String) -> void:
 			Sfx.play_at("deny", pos, -4.0, 1.4)
 		"throw":
 			Sfx.play_at("paper", pos, -4.0, 1.6)
+		"tumble":
+			Sfx.play_at("footstep", pos, 8.0, 0.4)
+			Sfx.play_at("deny", pos, -6.0, 0.8)
+		"books":
+			_spill_books(pos, extra)
+			Sfx.play_at("footstep", pos, 6.0, 0.45)
+		"spray":
+			_spray_cloud(pos, extra)
+		"samosa_arc":
+			_fly_samosa(pos, extra)
 		"shout":
 			var parts := extra.split("|", true, 1)
 			var who := _players_root.get_node_or_null(parts[0])
 			if who and parts.size() > 1:
 				who.shout(parts[1])
+
+
+# --- Chaos you can see: wet floors, extinguisher smoke, spilled books, flying samosas -----------------
+
+var _puddle_nodes: Array[Node3D] = []
+
+
+## Wet floors (and extinguisher foam) where the Director says they are.
+func _update_puddles(_t: float) -> void:
+	var list: Array = _director.world.get("puddles", [])
+	while _puddle_nodes.size() < list.size():
+		var root := Node3D.new()
+		var disc := MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		mesh.height = 0.02
+		mesh.radial_segments = 20
+		mesh.top_radius = 1.0
+		mesh.bottom_radius = 1.0
+		var mat := StandardMaterial3D.new()
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.roughness = 0.05
+		mat.metallic = 0.3
+		mesh.material = mat
+		disc.mesh = mesh
+		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(disc)
+		var sign := Voxel.new(9)
+		sign.box(Vector3(0, 0.35, 0), Vector3(0.36, 0.6, 0.04), Color("ffd24a"))
+		sign.box(Vector3(0, 0.42, 0.03), Vector3(0.24, 0.2, 0.01), Color("26262e"))
+		var sign_node := sign.to_instance()
+		sign_node.name = "Sign"
+		root.add_child(sign_node)
+		add_child(root)
+		_puddle_nodes.append(root)
+	for k in _puddle_nodes.size():
+		var node := _puddle_nodes[k]
+		node.visible = k < list.size()
+		if not node.visible:
+			continue
+		var pd: Dictionary = list[k]
+		var foam: bool = str(pd.get("kind", "")) == "foam"
+		node.position = (pd.p as Vector3) + Vector3(0, 0.02, 0)
+		var disc: MeshInstance3D = node.get_child(0)
+		disc.scale = Vector3(float(pd.r), 1.0, float(pd.r))
+		var mat: StandardMaterial3D = (disc.mesh as CylinderMesh).material
+		mat.albedo_color = Color(1, 1, 1, 0.8) if foam else Color(0.55, 0.8, 1.0, 0.45)
+		node.get_node("Sign").visible = not foam
+		node.get_node("Sign").position = Vector3(float(pd.r) * 0.7, 0, 0)
+
+
+## Knocked-over staff drop their books: a few blocks that tumble and settle.
+func _spill_books(pos: Vector3, extra: String) -> void:
+	var dir := Vector2.ZERO
+	var f := extra.split_floats(",")
+	if f.size() == 2:
+		dir = Vector2(f[0], f[1])
+	for k in 3 + randi() % 3:
+		var book := RigidBody3D.new()
+		book.collision_layer = 0
+		book.collision_mask = 1
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(0.22, 0.05, 0.3)
+		var col := CollisionShape3D.new()
+		col.shape = shape
+		book.add_child(col)
+		var v := Voxel.new(k)
+		v.box(Vector3.ZERO, Vector3(0.22, 0.05, 0.3), [Color("e0524f"), Color("4f86e0"), Color("7fe0a0"), Color("ffd24a"), Color("9a62d6")][randi() % 5])
+		v.box(Vector3(0.0, 0.0, 0.0), Vector3(0.2, 0.052, 0.28), Color("fbf6e8"))
+		book.add_child(v.to_instance())
+		add_child(book)
+		book.global_position = pos + Vector3(randf_range(-0.2, 0.2), 1.3, randf_range(-0.2, 0.2))
+		book.linear_velocity = Vector3(dir.x * 0.4 + randf_range(-2, 2), randf_range(2.0, 4.0), dir.y * 0.4 + randf_range(-2, 2))
+		book.angular_velocity = Vector3(randf_range(-8, 8), randf_range(-8, 8), randf_range(-8, 8))
+		get_tree().create_timer(7.0).timeout.connect(book.queue_free)
+
+
+## Fire extinguisher: a burst of white smoke that hangs about for a while.
+func _spray_cloud(pos: Vector3, extra: String) -> void:
+	var f := extra.split_floats(",")
+	var dir := Vector3(f[0], 0, f[1]) if f.size() == 2 else Vector3.FORWARD
+	var puff := CPUParticles3D.new()
+	puff.amount = 180
+	puff.lifetime = 6.0
+	puff.one_shot = true
+	puff.explosiveness = 0.25
+	puff.direction = dir
+	puff.spread = 22.0
+	puff.initial_velocity_min = 3.0
+	puff.initial_velocity_max = 6.0
+	puff.damping_min = 2.5
+	puff.damping_max = 3.5
+	puff.gravity = Vector3(0, 0.15, 0)
+	puff.scale_amount_min = 0.9
+	puff.scale_amount_max = 2.0
+	var q := SphereMesh.new()
+	q.radius = 0.35
+	q.height = 0.7
+	q.radial_segments = 8
+	q.rings = 4
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.96, 0.97, 1.0, 0.42)
+	q.material = mat
+	puff.mesh = q
+	add_child(puff)
+	puff.global_position = pos + dir * 0.9
+	puff.emitting = true
+	Sfx.play_at("flush", pos, 4.0, 2.2)
+	get_tree().create_timer(9.0).timeout.connect(puff.queue_free)
+
+
+## A samosa arcing from `from` to "x,y,z".
+func _fly_samosa(from: Vector3, extra: String) -> void:
+	var to := _vec(extra)
+	var v := Voxel.new(4)
+	v.box(Vector3.ZERO, Vector3(0.18, 0.1, 0.18), Color("e0a050"))
+	v.box(Vector3(0, 0.06, 0), Vector3(0.1, 0.05, 0.1), Color("c9853a"))
+	var s := v.to_instance()
+	add_child(s)
+	s.position = from
+	var t_end := clampf(from.distance_to(to) / 14.0, 0.2, 1.0)
+	var tw := create_tween()
+	tw.tween_method(func(t: float):
+		if is_instance_valid(s):
+			s.position = from.lerp(to, t) + Vector3(0, sin(t * PI) * 1.2, 0)
+			s.rotation = Vector3(t * 12.0, t * 7.0, 0.0), 0.0, 1.0, t_end)
+	tw.tween_callback(func(): Sfx.play_at("paper", to, 0.0, 0.6))
+	tw.tween_callback(s.queue_free)
 
 
 ## A thrown paper ball: flies along its arc, then lies where it hit for a while.
@@ -424,6 +565,10 @@ func _spawn_player(data: Dictionary) -> Node:
 
 
 func _spawn_prop(data: Dictionary) -> Node:
+	if str(data.get("kind", "")) == "trolley":
+		var trolley: CharacterBody3D = TrolleyScript.new()
+		trolley.setup(data, _players_root)
+		return trolley
 	var ball: RigidBody3D = BallScript.new()
 	ball.setup(data, _players_root)
 	return ball

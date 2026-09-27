@@ -2272,10 +2272,31 @@ func on_effect(kind: String, _pos: Vector3, extra: String) -> void:
 			Sfx.play("alarm_spotted", -10.0, 0.7 + 0.1 * h)
 		"round_intro":
 			_show_intro.call_deferred()
+		"splat":
+			_splat(extra)
 		"hint_proxy":
 			toast("%s is missing! [%s] answer \"Present!\" for them" % [extra, GameInput.key_label("proxy")], Color("7fe0a0"))
 		"win":
 			_show_escape_moment()
+
+
+## A samosa to the face: a greasy splat that slides off.
+func _splat(by: String) -> void:
+	var blob := ColorRect.new()
+	blob.color = Color(0.88, 0.62, 0.3, 0.7)
+	blob.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	blob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(blob)
+	var label := _outlined("SPLAT!  (%s)" % by, 48)
+	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	label.add_theme_color_override("font_color", Color("fff3cc"))
+	blob.add_child(label)
+	Sfx.play("paper", 4.0, 0.5)
+	var tw := create_tween()
+	tw.tween_interval(0.6)
+	tw.tween_property(blob, "modulate:a", 0.0, 1.2)
+	tw.tween_callback(blob.queue_free)
 
 
 ## "CLOSE CALL +50", rising and fading next to the crosshair.

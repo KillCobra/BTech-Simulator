@@ -349,7 +349,7 @@ func _corridor(W: Dictionary, k: int, opts: Dictionary) -> void:
 		fb(F, 0, 1.5, -WT / 2.0 - 0.05, 0.3, 0.4, 0.1, Color("e0524f"), 0.0)
 		fb(F, 0, 1.45, -WT / 2.0 - 0.11, 0.14, 0.08, 0.04, Color.WHITE, 0.0)
 		label("FIRE", fp(F, 0, 1.64, -WT / 2.0 - 0.105), 18, Color.WHITE, fyaw(F), 0)
-		c._interactable("alarm", fp(F, 0, 0, -1.0), "Pull the fire alarm")
+		c._interactable("alarm", fp(F, 0, 0, -1.0), "Pull the fire alarm", {"wall": fp(F, 0, 0, -WT / 2.0) + oy()})
 	if k in opts.get("cams", []):
 		var at: Vector3 = W.ua * (W.u0 + 0.6) + W.va * W.vm + Vector3(0, c._oy + WH - 0.3, 0)
 		c.add_cctv(at, facing(Vector2(W.ua.x, W.ua.z)), 0.4, 0.4)

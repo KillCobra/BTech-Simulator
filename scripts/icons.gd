@@ -62,18 +62,18 @@ const ITEM_SVG := {
 <rect x='24' y='44' width='8' height='4' fill='#ffd24a' transform='skewY(38)'/>
 <path d='M26 38 L30 41 L30 70 L26 67 Z' fill='#ffd24a'/>
 </svg>""",
-	"detention_ticket": """<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'>
-<defs><linearGradient id='p' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#ffc6c6'/><stop offset='1' stop-color='#ff7a7a'/></linearGradient></defs>
-<ellipse cx='50' cy='84' rx='36' ry='5' fill='#000' opacity='0.25'/>
-<g transform='rotate(-12 48 48)'>
-<path d='M12 30 h72 v10 a6 6 0 0 0 0 12 v10 h-72 v-10 a6 6 0 0 0 0 -12 z' fill='#b83a3a' transform='translate(3 4)'/>
-<path d='M12 30 h72 v10 a6 6 0 0 0 0 12 v10 h-72 v-10 a6 6 0 0 0 0 -12 z' fill='url(#p)'/>
-<path d='M64 30 v32' stroke='#b83a3a' stroke-width='2' stroke-dasharray='4 3'/>
-<path d='M24 40 l6 6 l12 -12' stroke='#1f7a3a' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
-<rect x='24' y='50' width='30' height='4' rx='2' fill='#8a2a3a'/>
-<circle cx='74' cy='46' r='6' fill='#ffd24a'/>
-<path d='M12 30 h72' stroke='#fff' stroke-width='2' opacity='0.6'/>
-</g>
+	"extinguisher": """<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'>
+<defs><linearGradient id='r' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#ff7a6a'/><stop offset='1' stop-color='#c42a22'/></linearGradient></defs>
+<ellipse cx='48' cy='88' rx='22' ry='5' fill='#000' opacity='0.25'/>
+<rect x='34' y='30' width='30' height='56' rx='10' fill='#8a1a14'/>
+<rect x='31' y='27' width='30' height='56' rx='10' fill='url(#r)'/>
+<rect x='36' y='46' width='20' height='16' rx='2' fill='#fbf6e8'/>
+<rect x='39' y='50' width='14' height='3' fill='#c42a22'/><rect x='39' y='56' width='10' height='3' fill='#c42a22'/>
+<rect x='40' y='14' width='12' height='14' rx='2' fill='#3a3d47'/>
+<path d='M52 18 L72 14 L74 20 L54 24 Z' fill='#26262e'/>
+<path d='M44 16 q-18 -6 -20 16 q-2 16 6 24' stroke='#26262e' stroke-width='5' fill='none' stroke-linecap='round'/>
+<path d='M76 12 q8 -4 12 2 M78 20 q9 0 10 6' stroke='#dfeef2' stroke-width='4' fill='none' stroke-linecap='round' opacity='0.9'/>
+<path d='M34 32 L34 72' stroke='#fff' stroke-width='3' opacity='0.4'/>
 </svg>""",
 }
 

@@ -32,6 +32,7 @@ var sprinting := false
 var hidden := false  # inside a locker
 var seated := false  # sitting on a classroom chair
 var hand_up := false  # asking the teacher a question
+var tumbling := false  # knocked over (shoved, slipped, run over...)
 
 var display_name := ""
 var look := {}
@@ -81,6 +82,9 @@ var _sit_intro := 0.0      # seconds left of the third-person "sitting down" sho
 var _cine_fov := 55.0
 var _escape_t := 0.0       # seconds left of the look back at the university you just escaped
 var spectating := -1       # escaped: watching this friend (peer id), -1 = not
+var _tumble_t := 0.0       # local: seconds left on the floor
+var _tilt := 0.0           # knocked-over lean of the body (all peers)
+var _riding := ""          # local: name of the trolley we're sitting in
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
@@ -143,7 +147,7 @@ func _build() -> void:
 	var sync := MultiplayerSynchronizer.new()
 	sync.name = "Sync"
 	var config := SceneReplicationConfig.new()
-	for prop in [".:net_position", ".:net_yaw", ".:net_pitch", ".:net_speed", ".:crouching", ".:sprinting", ".:hidden", ".:seated", ".:hand_up"]:
+	for prop in [".:net_position", ".:net_yaw", ".:net_pitch", ".:net_speed", ".:crouching", ".:sprinting", ".:hidden", ".:seated", ".:hand_up", ".:tumbling"]:
 		config.add_property(NodePath(prop))
 		config.property_set_spawn(NodePath(prop), true)
 		config.property_set_replication_mode(NodePath(prop), SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
@@ -217,6 +221,33 @@ func launch(impulse: Vector3) -> void:
 	var fwd := -transform.basis.z
 	velocity.x += fwd.x * 2.0
 	velocity.z += fwd.z * 2.0
+
+
+## Server -> owner: knocked over. You fly along `push`, lie there, then get up.
+@rpc("any_peer", "call_local", "reliable")
+func tumble(push: Vector3, seconds: float) -> void:
+	if not _from_server() or not is_multiplayer_authority() or hidden:
+		return
+	_riding = ""
+	seated = false
+	_sit_intro = 0.0
+	_tumble_t = seconds
+	tumbling = true
+	velocity = push
+	Sfx.play("footstep", 2.0, 0.45)
+
+
+## Server -> owner: hop into a trolley (or out of it, with "").
+@rpc("any_peer", "call_local", "reliable")
+func ride(trolley_name: String) -> void:
+	if not _from_server() or not is_multiplayer_authority():
+		return
+	_riding = trolley_name
+	seated = false
+
+
+func _trolley(trolley_name: String) -> Node3D:
+	return _world.get_node("Props").get_node_or_null(trolley_name) if _world and trolley_name != "" else null
 
 
 func _grabbed() -> bool:
@@ -378,7 +409,7 @@ func _my_ball() -> Node:
 		return null
 	var my_id := int(str(name))
 	for ball in _world.get_node("Props").get_children():
-		if ball.holder == my_id:
+		if ball.get("holder") != null and ball.holder == my_id:
 			return ball
 	return null
 
@@ -465,6 +496,8 @@ func _interact() -> void:
 			_request("boost", {"friend": _target.id})
 		"vouch":
 			_request("vouch", {"friend": _target.id})
+		"trolley":
+			_request("trolley", {"name": _target.name})
 		"give":
 			if _target.has("cash"):
 				_request("give", {"to": _target.id, "cash": int(_target.cash)})
@@ -544,11 +577,25 @@ func _find_target() -> Dictionary:
 					line = "Uncle, what have you got?"
 				return {"type": "npc", "name": str(npc.name), "label": label, "line": line}
 	if _world:
-		for ball in _world.get_node("Props").get_children():
-			var to_ball: Vector3 = ball.global_position - me
-			to_ball.y = 0
-			if ball.holder == -1 and to_ball.length() < 1.8 and (to_ball.length() < 1.2 or fwd.dot(to_ball.normalized()) > 0.3):
-				return {"type": "ball", "name": str(ball.name), "label": "Pick up the basketball"}
+		var my_id := int(str(name))
+		for prop in _world.get_node("Props").get_children():
+			var to_prop: Vector3 = prop.global_position - me
+			to_prop.y = 0
+			if prop.get("pusher") != null:  # a trolley
+				if absf(prop.global_position.y - me.y) > 1.2 or to_prop.length() > 2.2 or (to_prop.length() > 0.9 and fwd.dot(to_prop.normalized()) < 0.3):
+					continue
+				var label := "Push the trolley"
+				if prop.pusher == my_id:
+					label = "Let go of the trolley (it keeps rolling!)"
+				elif crouching and prop.rider == -1:
+					label = "Hop in the trolley"
+				elif prop.pusher != -1:
+					continue
+				return {"type": "trolley", "name": str(prop.name), "label": label}
+			if prop.get("holder") == null:
+				continue
+			if prop.holder == -1 and to_prop.length() < 1.8 and (to_prop.length() < 1.2 or fwd.dot(to_prop.normalized()) > 0.3):
+				return {"type": "ball", "name": str(prop.name), "label": "Pick up the basketball"}
 	var best := {}
 	var best_score := INF
 	for i in _interactables.size():
@@ -577,6 +624,9 @@ func _physics_process(delta: float) -> void:
 	if is_multiplayer_authority():
 		if not hidden:
 			_move(delta)
+		elif _tumble_t > 0.0:
+			_tumble_t = 0.0
+			tumbling = false
 		net_position = position
 		net_yaw = rotation.y
 		net_pitch = _head.rotation.x
@@ -643,8 +693,14 @@ func _physics_process(delta: float) -> void:
 	_label.position.y = _head.position.y + 0.45
 	# In your own sitting-down shot, you sit once the camera has got there.
 	var sit_now := seated and not (is_multiplayer_authority() and _sit_intro > SIT_SHOT - 0.5)
-	_model.animate(delta, 0.0 if seated else net_speed, crouching, sprinting, _head.rotation.x, sit_now)
+	_model.animate(delta, 0.0 if seated or tumbling else net_speed, crouching, sprinting, _head.rotation.x, sit_now)
 	_model.pose_hand(delta, hand_up)
+	_tilt = lerpf(_tilt, -1.35 if tumbling else 0.0, minf(1.0, delta * (10.0 if tumbling else 4.0)))
+	_model.rotation.x = _tilt
+	if is_multiplayer_authority():
+		_camera.rotation.z = lerpf(_camera.rotation.z, 0.5 * sin(_tumble_t * 5.0) if tumbling else 0.0, minf(1.0, delta * 8.0))
+		if tumbling:
+			_head.position.y = lerpf(_head.position.y, 0.35, minf(1.0, delta * 10.0))
 
 
 func _footsteps(delta: float, local: bool) -> void:
@@ -668,6 +724,29 @@ func _move(delta: float) -> void:
 	# With the phone out you can still walk (no sprinting): the mouse taps the screen.
 	var phone := _phone_open()
 	var has_control := (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or phone) and _instrument < 0 and _talk_npc == null and spectating < 0 and _escape_t <= 0.0
+	if _tumble_t > 0.0:
+		# On the floor: slide to a stop, no control until you're up.
+		_tumble_t -= delta
+		tumbling = _tumble_t > 0.0
+		crouching = false
+		sprinting = false
+		velocity.x = move_toward(velocity.x, 0.0, 9.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, 9.0 * delta)
+		move_and_slide()
+		return
+	var cart := _trolley(_riding)
+	if cart:
+		crouching = true
+		sprinting = false
+		velocity = Vector3.ZERO
+		position = cart.seat_position()
+		if has_control and Input.is_action_just_pressed("jump"):
+			_riding = ""
+			velocity.y = JUMP_VELOCITY
+			_request("trolley_off", {})
+		return
+	elif _riding != "":
+		_riding = ""
 	var input := Vector2.ZERO
 	if has_control:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -763,6 +842,29 @@ func _move(delta: float) -> void:
 							if _interactables[k].kind == "pickup" and _interactables[k].get("item", "") == "exam_paper":
 								position = _interactables[k].pos + Vector3(0, 0.05, 0)
 								_request("interact", {"i": k})
+					elif action.begins_with("goto:"):  # stand by the nearest interactable (or item pickup, or trolley) of a kind
+						var want := action.trim_prefix("goto:")
+						var best := Vector3.INF
+						var spots: Array = []
+						for it in _interactables:
+							if it.kind == want or str(it.get("item", "")) == want:
+								spots.append(it.pos)
+						var face := Vector3.INF
+						for prop in _world.get_node("Props").get_children():
+							if want == "trolley" and prop.get("pusher") != null:
+								spots.append(prop.global_position + prop.global_transform.basis.z * 1.2)
+						for at: Vector3 in spots:
+							if global_position.distance_to(at) < global_position.distance_to(best):
+								best = at
+						if best != Vector3.INF:
+							position = Vector3(best.x, maxf(best.y, 0.0) + 0.05, best.z)
+							if want == "trolley":
+								for prop in _world.get_node("Props").get_children():
+									if prop.get("pusher") != null and (prop.global_position + prop.global_transform.basis.z * 1.2).distance_to(best) < 0.1:
+										face = prop.global_position
+							if face != Vector3.INF:
+								rotation.y = atan2(-(face.x - position.x), -(face.z - position.z))
+							print("[bot] at the %s: %s" % [want, best])
 					elif action.begins_with("buy:"):
 						_request("buy", {"what": action.trim_prefix("buy:")})
 					elif action.begins_with("power"):

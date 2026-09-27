@@ -13,6 +13,7 @@ const CampusBuilder := preload("res://scenes/world/campus_builder.gd")
 const Questions := preload("res://scripts/questions.gd")
 const P := preload("res://scripts/palette.gd")
 const Rules := preload("res://scripts/rules.gd")
+const Lines := preload("res://scripts/lines.gd")
 
 const PASSING_TIME := 25.0    # class change: this long to walk to the next class
 const RETURN_GRACE := 60.0    # after detention: this long to walk back to class
@@ -70,11 +71,10 @@ const TEACHER_BRAINS := [
 const LECTURE := ["Ah! An EXCELLENT question. You see...", "...a linked list is really just a treasure hunt...",
 	"...and each node points to the next, like gossip in a canteen...", "...which is why, in 1962, a man named Hoare...",
 	"...no, no, this is the fascinating part...", "...where was I? Ah yes, the stack!", "...any questions? No? Good. Where were we..."]
-const SHOUTS := ["Hey! Stop right there!", "Where do you think you're going?!", "Come back here!", "You! Which class?!"]
 
 const ITEMS := {
 	"hall_pass": "Hall Pass", "samosa": "Samosa", "medical_note": "Medical Note",
-	"canteen_key": "Canteen Key", "library_book": "Library Book",
+	"canteen_key": "Canteen Key", "library_book": "Library Book", "extinguisher": "Fire Extinguisher",
 }
 # Canteen shop (Pappu Uncle's counter). Prices in rupees.
 const SHOP := {"samosa": 10, "hall_pass": 40, "medical_note": 70}
@@ -92,7 +92,7 @@ const COIN_COUNT := 10
 const COIN_RESPAWN := 20.0
 const EXAM_GRACE := 8.0       # seconds to sit down once a test is announced
 const BUMP_LINES := ["Oi, watch it!", "Bro, seriously?", "Careful!", "Excuse YOU.", "Ow! My foot!",
-	"Walk much?", "Arre, dekh ke chalo!", "Hey! I'm walking here!", "Rude.", "Personal space, please!"]
+	"Walk much?", "Eyes UP, genius!", "Hey! I'm walking here!", "Rude.", "Personal space, please!"]
 const QUESTS := {
 	"samosa": "Eat a samosa from the canteen",
 	"exam": "Steal the exam paper from the staff room",
@@ -114,6 +114,7 @@ var rooms := []   # per classroom: {"attendance_in", "calling", "exam_at", "exam
 var feed := []    # [{"t": elapsed, "text": String}]
 var marks := []   # [{"pos": Vector3, "npc": String, "by": String, "until": float}]
 var world := {"alarm_until": -100.0, "alarm_ready": 0.0, "gate_until": -100.0, "taken": {}, "stash": {},
+	"puddles": [], "clouds": [], "calls": [], "bucket_ready": {},
 	"period": 0, "periods": 3, "period_len": 160.0, "period_start": 0.0, "passing_until": -100.0, "coins": [],
 	"heat": 1, "heat_bumps": 0, "party_at": -1.0, "party_until": -100.0, "race_winner": -1, "race_end_at": -1.0}
 var elapsed := 0.0
@@ -220,6 +221,10 @@ func start(seats: Dictionary, minutes: float) -> void:
 
 	for k in campus.ball_spawns.size():
 		_balls.append(prop_spawner.spawn({"id": "Ball%d" % k, "pos": campus.ball_spawns[k]}))
+	# A couple of canteen trolleys out on the assembly ground.
+	for k in 2:
+		var at: Vector3 = campus.assembly + Vector3(-3.5 + k * 7.0, 0.1, 3.5)
+		_trolleys.append(prop_spawner.spawn({"id": "Trolley%d" % k, "kind": "trolley", "pos": at, "yaw": 0.0}))
 	_setup_coins()
 	if OS.get_cmdline_user_args().has("--no-staff"):  # dev: test routes without staff
 		_log("Class has started (no staff).")
@@ -624,6 +629,8 @@ func request(action: String, args: Dictionary) -> void:
 		"outside_bell": _on_outside_bell(id, p)
 		"give": _on_give(id, p, int(args.get("to", -1)), int(args.get("cash", 0)), int(args.get("slot", -1)))
 		"shout": _on_shout(id, p, int(args.get("k", 0)))
+		"trolley": _on_trolley(id, p, str(args.get("name", "")))
+		"trolley_off": _off_trolley(id)
 		"excuse": _on_excuse(id, p, int(args.get("k", -1)))
 		"vouch": _on_vouch(id, p, int(args.get("friend", -1)))
 		"call_office": _on_call_office(id, int(args.get("to", -1)))
@@ -764,6 +771,36 @@ func _rule() -> String:
 	return str(_rules.get("rule", ""))
 
 
+## What Pappu Uncle says when you come to the counter: he notices your wallet, your
+## detentions and the mood of the school.
+func _uncle_greeting(id: int) -> String:
+	var st: Dictionary = status.get(id, {})
+	if int(st.get("cash", 0)) < 10:
+		return Lines.uncle(_rng, "broke")
+	if int(st.get("caught", 0)) > 0 and _rng.randf() < 0.5:
+		return Lines.uncle(_rng, "caught")
+	if int(world.heat) >= 4 and _rng.randf() < 0.5:
+		return Lines.uncle(_rng, "heat")
+	return Lines.uncle(_rng, "greet")
+
+
+var _uncle_next := 12.0
+
+
+## Hang around the canteen and Uncle talks to you (tips included).
+func _uncle_chatter(players: Dictionary) -> void:
+	if elapsed < _uncle_next:
+		return
+	_uncle_next = elapsed + _rng.randf_range(10.0, 16.0)
+	var b := _brain_by_name("Uncle")
+	if b.is_empty() or str(b.npc.speech) != "":
+		return
+	for id in players:
+		if status[id].state in ["class", "chased"] and (players[id] as Node3D).global_position.distance_to(b.npc.global_position) < 6.0:
+			b.npc.say(Lines.uncle(_rng, "idle"), 3.5)
+			return
+
+
 func _near_counter(p: Node3D) -> bool:
 	var i := _find_interactable("counter")
 	return i != -1 and p.global_position.distance_to(campus.interactables[i].pos) < 3.5
@@ -805,7 +842,7 @@ func _on_buy(id: int, p: Node3D, what: String) -> void:
 		_fx.rpc_id(id, "pickup", Vector3.ZERO, "")
 		_tell(id, "Upgrade: %s (level %d)" % [UPGRADES[what][0], level + 1], Color("7fe0a0"))
 	st.cash = int(st.cash) - price
-	_npc_say("Uncle", ["Shukriya, beta!", "Good choice!", "Come again!"][_rng.randi() % 3])
+	_npc_say("Uncle", Lines.uncle(_rng, "buy"))
 
 
 ## Pappu Uncle sends the principal a plate of samosas "from the canteen"... and a
@@ -1099,8 +1136,11 @@ func _on_interact(id: int, p: Node3D, index: int) -> void:
 				_complete(id, "exam")
 			elif _give(id, it.item):
 				world.taken[index] = elapsed + PICKUP_RESPAWN
+				if it.item == "extinguisher":
+					st.ext_charges = 2
+					_tell(id, "Fire extinguisher: 2 sprays. Blinds cameras and staff, knocks people over, floor gets slippery.", Color("9fd8ff"))
 		"counter":
-			_npc_say("Uncle", "Kya chahiye, beta?")
+			_npc_say("Uncle", _uncle_greeting(id))
 		"register":
 			if int(it.room) != _own_room(id):
 				_tell(id, "That's not your class register.", Color("ffb37a"))
@@ -1181,6 +1221,17 @@ func _on_interact(id: int, p: Node3D, index: int) -> void:
 				world.stash[key] = item
 				_fx_all("stash", it.pos, "")
 				_tell(id, "Hid the %s in the cistern. Nobody will find it here." % ITEMS.get(item, item), Color("9fd8ff"))
+		"bucket":
+			var key := str(index)
+			if float(world.bucket_ready.get(key, -1.0)) > elapsed:
+				_tell(id, "Already on the floor. Mr. Mendes is NOT happy.", Color("ffb37a"))
+				return
+			world.bucket_ready[key] = elapsed + 60.0
+			_puddle(it.pos, 2.6, 45.0, id, "water")
+			_fx_all("splash", it.pos, "")
+			_noise(it.pos, 8.0)
+			_tell(id, "SPLOSH. Wet floor: anyone who sprints across it goes flying.", Color("7fd0ea"))
+			_moment("bucket", id)
 		"return_book":
 			if st.items.has("library_book"):
 				st.items.erase("library_book")
@@ -1250,9 +1301,12 @@ func _on_use(id: int, p: Node3D, slot: int) -> void:
 		"samosa":
 			items.remove_at(slot)
 			var near := _nearest_brain(p.global_position, 3.5, ["teacher", "gate", "patrol", "sitter"])
+			if near.is_empty() or near.target == id:
+				if _throw_samosa(id, p):
+					return
 			if not near.is_empty() and near.target != id:
 				near.distracted_until = elapsed + 12.0
-				near.npc.say("Arre wah, samosa! *munch*", 3.0)
+				near.npc.say(["Ooh, samosa! *munch*", "For ME? Well... I didn't see anything. *munch*", "Is this a bribe? ...It's working. *munch*"][_rng.randi() % 3], 3.0)
 				if near.target != -1:
 					_end_chase(near)
 				_log("%s bribed %s with a samosa." % [_name(id), near.npc.display_name])
@@ -1267,7 +1321,7 @@ func _on_use(id: int, p: Node3D, slot: int) -> void:
 			if not guard.is_empty() and guard.target != id:
 				items.remove_at(slot)
 				st.gate_pass_until = elapsed + 15.0
-				guard.npc.say("Hmm... get well soon, beta. Go.", 3.0)
+				guard.npc.say("Hmm... get well soon, kid. Go.", 3.0)
 				_tell(id, "The guard bought it! Walk out now.", Color("7fe0a0"))
 			else:
 				_tell(id, "Show this to the gate guard up close.", Color("ffb37a"))
@@ -1277,7 +1331,15 @@ func _on_use(id: int, p: Node3D, slot: int) -> void:
 			else:
 				_tell(id, "Use it at the service gate in the east wall.", Color("ffb37a"))
 		"library_book":
-			_tell(id, "Return it at the library desk.", Color("9fd8ff"))
+			_tell(id, "Return it at the library desk (or wave it at a teacher: \"returning a book!\").", Color("9fd8ff"))
+		"extinguisher":
+			_spray(id, p)
+			st.ext_charges = int(st.get("ext_charges", 2)) - 1
+			if int(st.ext_charges) <= 0:
+				items.remove_at(slot)
+				_tell(id, "PSSHHHH! That was the last of it.", Color("9fd8ff"))
+			else:
+				_tell(id, "PSSHHHH! One spray left.", Color("9fd8ff"))
 
 
 ## Paper ball: flies along a real arc and stops at the first wall, floor or ceiling.
@@ -1452,6 +1514,29 @@ func _on_shove(id: int, p: Node3D) -> void:
 		if to.length() < best and (to.length() < 0.8 or fwd.dot(to.normalized()) > 0.35):
 			best = to.length()
 			target = b
+	# A friend right in front of you, closer than any staff: they go flying. No penalty.
+	var friend := -1
+	for other in status:
+		var q: Node3D = players_root.get_node_or_null(str(other))
+		if other == id or q == null or q.hidden or status[other].state not in ["class", "chased"]:
+			continue
+		var tq: Vector3 = q.global_position - p.global_position
+		if absf(tq.y) > 1.0 or not _within_reach(p, q):
+			continue
+		tq.y = 0.0
+		if tq.length() < best and (tq.length() < 0.8 or fwd.dot(tq.normalized()) > 0.35):
+			best = tq.length()
+			friend = other
+	if friend != -1:
+		if not _cooldown(id, "shove", 2.0):
+			return
+		var race := str(_rules.get("mode", "")) == "race"
+		if _tumble(friend, fwd * 6.5 + Vector3.UP * 2.0, 2.0 if race else 1.3, "was shoved by %s" % _name(id)):
+			_fx_all("shove", players_root.get_node(str(friend)).global_position, "")
+			_tell(friend, "%s SHOVED you!" % _name(id), Color("ff9a4a"))
+			_stat(id, "shoved_friends")
+			_moment("shoved_friend", id, friend)
+		return
 	if target.is_empty():
 		return
 	if not _cooldown(id, "shove", 4.0):
@@ -1459,12 +1544,8 @@ func _on_shove(id: int, p: Node3D) -> void:
 		return
 	var st: Dictionary = status[id]
 	var npc: Node = target.npc
-	target.stunned_until = elapsed + SHOVE_STUN
-	target.grab_until = -1.0
-	if status.has(target.target):
-		status[target.target].grabbed = false  # shoving a friend's captor frees them too
-	npc.stun(fwd * 5.5)
-	npc.say(["Arre!", "Oof!", "How DARE you?!", "Aaah!"][_rng.randi() % 4], 1.8)
+	_knock(target, fwd * 5.5, SHOVE_STUN, id)
+	npc.say(["Whoa!", "Oof!", "How DARE you?!", "Aaah!", "My BACK!"][_rng.randi() % 5], 1.8)
 	st.shoves += 1
 	st.grabbed = false
 	st.question = {}
@@ -1557,6 +1638,7 @@ func _update_balls() -> void:
 		var ball: Node = _balls[k]
 		if not is_instance_valid(ball):
 			continue
+		_ball_hits(ball)
 		if ball.check_basket(campus.rims):
 			_fx_all("swish", ball.global_position, "")
 			var thrower: int = ball.last_thrower
@@ -1802,6 +1884,303 @@ func _on_shout(id: int, p: Node3D, k: int) -> void:
 	_heard(id, float(pick[1]))
 
 
+# --- Physical chaos: tumbles, wet floors, trolleys, extinguishers ----------------------------------
+
+const SLIP_SPEED := 4.6        # faster than this over a wet floor and you're on your back
+const CRASH_SPEED := 8.5       # two students closing faster than this bounce off each other
+const MOP_EVERY := 32.0        # Mr. Mendes mops a patch of corridor this often
+var _trolleys: Array[Node] = []
+
+
+## Knock a student over (they fly along `push`, then get up). False if they can't be.
+func _tumble(id: int, push: Vector3, seconds: float, why := "") -> bool:
+	var p: Node3D = players_root.get_node_or_null(str(id))
+	if p == null or p.hidden or not status.has(id) or status[id].state not in ["class", "chased"]:
+		return false
+	if elapsed < float(status[id].get("tumble_until", -1.0)) + 0.6:
+		return false  # still picking themselves up
+	status[id].tumble_until = elapsed + seconds
+	_off_trolley(id)
+	for t in _trolleys:
+		if is_instance_valid(t) and t.pusher == id:
+			t.release(Vector3.ZERO)
+	p.tumble.rpc_id(id, push, seconds)
+	_fx_all("tumble", p.global_position, str(id))
+	_stat(id, "tumbles")
+	_moment("tumble", id)
+	if why != "":
+		print("[%.1f] %s %s" % [elapsed, _name(id), why])
+	return true
+
+
+## Knock a staff member (or a walking student) flat. `by`: the player responsible.
+func _knock(b: Dictionary, push: Vector3, seconds: float, by := -1) -> bool:
+	if _stunned(b) or (b.role == "extra" and b.state == "sit"):
+		return false
+	b.stunned_until = elapsed + seconds
+	b.grab_until = -1.0
+	if status.has(b.target):
+		status[b.target].grabbed = false  # knocking a friend's captor over frees them too
+		status[b.target].question = {}
+	b.npc.stun(push, seconds)
+	b.knocked_at = elapsed
+	b.knock_push = push
+	b.knocked_by = by
+	_fx_all("books", b.npc.global_position, "%.2f,%.2f" % [push.x, push.z])
+	return true
+
+
+func _puddle(pos: Vector3, radius: float, seconds: float, by: int, kind: String) -> void:
+	var list: Array = world.puddles
+	list.append({"p": pos, "r": radius, "until": elapsed + seconds, "by": by, "kind": kind})
+	while list.size() > 12:
+		list.pop_front()
+
+
+func _chaos_step(players: Dictionary, _delta: float) -> void:
+	var now := elapsed
+	world.puddles = (world.puddles as Array).filter(func(pd): return float(pd.until) > now)
+	world.clouds = (world.clouds as Array).filter(func(c): return float(c.until) > now)
+	world.calls = (world.calls as Array).filter(func(c): return float(c[2]) > now)
+	var ids: Array = players.keys()
+	# Two students sprinting into each other: both on the floor.
+	for i in ids.size():
+		for j in range(i + 1, ids.size()):
+			var a: Node3D = players[ids[i]]
+			var c: Node3D = players[ids[j]]
+			if a.hidden or c.hidden or a.seated or c.seated:
+				continue
+			var to: Vector3 = a.global_position - c.global_position
+			if absf(to.y) > 1.0:
+				continue
+			to.y = 0.0
+			if to.length() > 0.75 or float(a.net_speed) + float(c.net_speed) < CRASH_SPEED or not (a.sprinting or c.sprinting):
+				continue
+			var away := to.normalized() if to.length() > 0.01 else Vector3.RIGHT
+			var hit_a := _tumble(ids[i], away * 4.5 + Vector3.UP * 2.0, 1.2)
+			var hit_c := _tumble(ids[j], -away * 4.5 + Vector3.UP * 2.0, 1.2)
+			if hit_a or hit_c:
+				_log("%s and %s crashed into each other!" % [_name(ids[i]), _name(ids[j])])
+	# Dominoes: someone knocked flat takes out whoever they land on.
+	for b in _brains:
+		if now - float(b.get("knocked_at", -99.0)) > 0.6:
+			continue
+		var at: Vector3 = b.npc.global_position
+		var push: Vector3 = b.get("knock_push", Vector3.ZERO)
+		for o in _brains:
+			if o == b or o.npc.global_position.distance_to(at) > 1.0:
+				continue
+			if _knock(o, push * 0.8, 1.6, int(b.get("knocked_by", -1))):
+				o.npc.say(["WHOA—", "Not again!", "OOF!", "Watch it!"][_rng.randi() % 4], 1.6)
+				var by := int(b.get("knocked_by", -1))
+				if status.has(by):
+					_stat(by, "dominoes")
+					_moment("domino", by)
+					_log("DOMINO! %s took out %s!" % [str(b.npc.display_name).get_slice(" (", 0) if b.npc.display_name != "" else "A student", str(o.npc.display_name).get_slice(" (", 0) if o.npc.display_name != "" else "a student"])
+		for id in ids:
+			if int(id) != int(b.get("knocked_by", -1)) and (players[id] as Node3D).global_position.distance_to(at) < 0.9:
+				_tumble(id, push * 0.7 + Vector3.UP * 1.5, 1.1, "was flattened by a falling %s" % b.npc.display_name)
+	# Wet floors: sprint across one and you're on your back. So is a chasing teacher.
+	for pd: Dictionary in world.puddles:
+		var at: Vector3 = pd.p
+		var r: float = pd.r
+		for id in ids:
+			var q: Node3D = players[id]
+			var d := Vector2(q.global_position.x - at.x, q.global_position.z - at.z).length()
+			if d < r and absf(q.global_position.y - at.y) < 1.0 and q.sprinting and float(q.net_speed) > SLIP_SPEED:
+				var fwd := -q.global_transform.basis.z
+				fwd.y = 0.0
+				if _tumble(id, fwd.normalized() * 5.5 + Vector3.UP * 1.5, 1.3, "slipped on the wet floor"):
+					_tell(id, "WET FLOOR!", Color("7fd0ea"))
+		for b in _brains:
+			var npc: Node = b.npc
+			var d := Vector2(npc.global_position.x - at.x, npc.global_position.z - at.z).length()
+			if d >= r or absf(npc.global_position.y - at.y) > 1.0 or float(npc.net_speed) < 3.2:
+				continue
+			if _knock(b, npc.forward() * 4.5, 1.8, int(pd.by)):
+				npc.say(["WHOAAA—", "WHO LEFT THIS HERE?!", "My knee!", "SLIPPERY!"][_rng.randi() % 4], 1.8)
+				if status.has(int(pd.by)):
+					_stat(int(pd.by), "slips")
+					_moment("slip_trap", int(pd.by))
+				_log("%s slipped on the wet floor!" % str(npc.display_name).get_slice(" (", 0) if npc.display_name != "" else "A student slipped on the wet floor!")
+	# Mr. Mendes mops as he goes.
+	for b in _brains:
+		if b.npc.name == "Peon" and b.state == "patrol" and now >= float(b.get("mop_at", MOP_EVERY)):
+			b.mop_at = now + MOP_EVERY + _rng.randf_range(0.0, 10.0)
+			_puddle(b.npc.global_position, 2.2, 50.0, -1, "water")
+			b.npc.say(Lines.pick(_rng, "Peon", "mop"), 2.5)
+	# Trolleys at speed flatten whoever they hit.
+	for t in _trolleys:
+		if not is_instance_valid(t) or t.speed() < 3.0:
+			continue
+		var at: Vector3 = t.global_position
+		var push: Vector3 = t.roll * 0.9 + Vector3.UP * 1.5
+		var by: int = t.last_pusher
+		var hit := false
+		for b in _brains:
+			if b.npc.global_position.distance_to(at) < 1.0 and _knock(b, t.roll * 0.9, 2.0, by):
+				b.npc.say(["OOF!", "A TROLLEY?!", "My SHINS!", "Who's driving that thing?!"][_rng.randi() % 4], 2.0)
+				hit = true
+				if status.has(by):
+					_stat(by, "trolley_hits")
+					_moment("trolley", by)
+					_log("%s's trolley flattened %s!" % [_name(by), str(b.npc.display_name).get_slice(" (", 0) if b.npc.display_name != "" else "a student"])
+		for id in ids:
+			if int(id) != t.pusher and int(id) != t.rider and (players[id] as Node3D).global_position.distance_to(at) < 0.95:
+				hit = _tumble(id, push, 1.3, "was run over by a trolley") or hit
+		if hit:
+			t.roll *= 0.6
+	# Riders follow their trolley; a rider who gets chased or caught hops out.
+	for t in _trolleys:
+		if is_instance_valid(t) and t.rider != -1 and (not status.has(t.rider) or status[t.rider].state not in ["class", "chased"]):
+			_off_trolley(t.rider)
+
+
+## A ball flying fast enough knocks over whoever it hits.
+func _ball_hits(ball: Node) -> void:
+	if ball.holder != -1 or ball.linear_velocity.length() < 6.0 or elapsed < float(ball.get_meta("hit_cool", -1.0)):
+		return
+	var at: Vector3 = ball.global_position
+	var push: Vector3 = ball.linear_velocity * 0.45
+	push.y = 0.0
+	for b in _brains:
+		if (b.npc.global_position + Vector3(0, 1.0, 0)).distance_to(at) < 0.75 and _knock(b, push, 1.5, int(ball.last_thrower)):
+			b.npc.say(["OW! My HEAD!", "Who threw that?!", "BASKETBALL?!"][_rng.randi() % 3], 1.8)
+			ball.set_meta("hit_cool", elapsed + 0.8)
+			ball.linear_velocity *= -0.3
+			if status.has(int(ball.last_thrower)):
+				_stat(int(ball.last_thrower), "ball_hits")
+				_moment("ball_hit", int(ball.last_thrower))
+				_log("%s beaned %s with a basketball!" % [_name(int(ball.last_thrower)), str(b.npc.display_name).get_slice(" (", 0) if b.npc.display_name != "" else "a student"])
+			return
+	for id in status:
+		var q: Node3D = players_root.get_node_or_null(str(id))
+		if q and int(id) != int(ball.last_thrower) and (q.global_position + Vector3(0, 1.0, 0)).distance_to(at) < 0.7:
+			if _tumble(id, push + Vector3.UP * 1.5, 1.0, "was hit by a basketball"):
+				ball.set_meta("hit_cool", elapsed + 0.8)
+				ball.linear_velocity *= -0.3
+				return
+
+
+## Fire extinguisher: a cloud nobody (or no camera) can see through, a blast that knocks
+## over whoever's in front, and a slippery floor for half a minute.
+func _spray(id: int, p: Node3D) -> void:
+	var fwd: Vector3 = -p.get_node("Head").global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var at: Vector3 = p.global_position + fwd * 2.2
+	(world.clouds as Array).append({"p": at, "r": 3.2, "until": elapsed + 9.0})
+	_puddle(at, 2.4, 30.0, id, "foam")
+	_fx_all("spray", p.global_position + Vector3(0, 1.2, 0), "%.2f,%.2f" % [fwd.x, fwd.z])
+	for b in _brains:
+		var to: Vector3 = b.npc.global_position - p.global_position
+		if absf(to.y) > 1.2 or to.length() > 4.2 or fwd.dot(Vector3(to.x, 0, to.z).normalized()) < 0.6:
+			continue
+		if _knock(b, fwd * 5.0, 1.8, id) and b.role != "extra":
+			b.npc.say(["*COUGH* I can't SEE!", "MY EYES!", "*cough cough* WHO DID THAT?!"][_rng.randi() % 3], 2.0)
+	for other in status:
+		var q: Node3D = players_root.get_node_or_null(str(other))
+		if other == id or q == null:
+			continue
+		var to: Vector3 = q.global_position - p.global_position
+		if absf(to.y) < 1.2 and to.length() < 3.8 and fwd.dot(Vector3(to.x, 0, to.z).normalized()) > 0.6:
+			_tumble(other, fwd * 4.0 + Vector3.UP * 1.5, 0.9, "was blasted by %s's extinguisher" % _name(id))
+	_noise(at, 9.0)
+	_stat(id, "sprays")
+	_moment("spray", id)
+	_log("%s set off a fire extinguisher!" % _name(id))
+
+
+## Throw a samosa: a staff member in front of you stops to eat it; a friend gets splatted.
+func _throw_samosa(id: int, p: Node3D) -> bool:
+	var fwd: Vector3 = -p.get_node("Head").global_transform.basis.z
+	var flat := Vector3(fwd.x, 0, fwd.z).normalized()
+	var best := {}
+	var best_d := 14.0
+	for b in _brains:
+		if b.role == "extra" or b.npc.name == "Uncle":
+			continue
+		var to: Vector3 = b.npc.global_position - p.global_position
+		var d := Vector3(to.x, 0, to.z).length()
+		if absf(to.y) < 1.5 and d < best_d and d > 0.5 and flat.dot(Vector3(to.x, 0, to.z) / d) > 0.85 and _within_reach(p, b.npc):
+			best = b
+			best_d = d
+	if not best.is_empty():
+		best.distracted_until = elapsed + 7.0
+		best.npc.stop(best.npc.yaw_towards(p.global_position - best.npc.global_position))
+		best.npc.say(["A flying SAMOSA?! ...Don't mind if I do. *munch*", "Is it raining samosas? *munch munch*", "Mmm. Evidence destroyed. *munch*"][_rng.randi() % 3], 3.5)
+		if best.target != -1:
+			_end_chase(best)
+		_fx_all("samosa_arc", p.global_position + Vector3(0, 1.5, 0), "%.2f,%.2f,%.2f" % [best.npc.global_position.x, best.npc.global_position.y + 1.4, best.npc.global_position.z])
+		_stat(id, "samosas")
+		_moment("samosa_throw", id)
+		_log("%s threw a samosa at %s. It worked." % [_name(id), best.npc.display_name.get_slice(" (", 0)])
+		return true
+	for other in status:
+		var q: Node3D = players_root.get_node_or_null(str(other))
+		if other == id or q == null or q.hidden:
+			continue
+		var to: Vector3 = q.global_position - p.global_position
+		var d := Vector3(to.x, 0, to.z).length()
+		if absf(to.y) < 1.5 and d < 12.0 and d > 0.4 and flat.dot(Vector3(to.x, 0, to.z) / d) > 0.9:
+			_fx_all("samosa_arc", p.global_position + Vector3(0, 1.5, 0), "%.2f,%.2f,%.2f" % [q.global_position.x, q.global_position.y + 1.4, q.global_position.z])
+			_fx.rpc_id(other, "splat", Vector3.ZERO, _name(id))
+			_tell(other, "%s hit you in the face with a SAMOSA!" % _name(id), Color("e0a050"))
+			_heard(other, 6.0)  # "HEY!"
+			_stat(id, "samosas")
+			_moment("samosa_splat", id, other)
+			return true
+	return false
+
+
+## E on a trolley: grab it, let go of it (it rolls on), or (crouching) hop in.
+func _on_trolley(id: int, p: Node3D, trolley_name: String) -> void:
+	var t: Node = null
+	for x in _trolleys:
+		if is_instance_valid(x) and str(x.name) == trolley_name:
+			t = x
+	if t == null or p.global_position.distance_to(t.global_position) > 2.6:
+		return
+	if t.pusher == id:
+		var fwd: Vector3 = -p.global_transform.basis.z
+		fwd.y = 0.0
+		t.release(fwd.normalized() * (float(p.net_speed) + 3.5))
+		_fx_all("throw", t.global_position, "")
+		return
+	if t.rider == id:
+		_off_trolley(id)
+		return
+	if p.crouching and t.rider == -1 and t.pusher != id:
+		for x in _trolleys:
+			if is_instance_valid(x) and x.rider == id:
+				return
+		t.rider = id
+		p.ride.rpc_id(id, str(t.name))
+		_tell(id, "You're in the trolley! Someone push. [Space] hop out.", Color("7fe0a0"))
+		_moment("ride", id)
+		return
+	if t.pusher == -1:
+		for x in _trolleys:
+			if is_instance_valid(x) and x.pusher == id:
+				x.release(Vector3.ZERO)
+		t.grab(id)
+
+
+func _off_trolley(id: int) -> void:
+	for t in _trolleys:
+		if is_instance_valid(t) and t.rider == id:
+			t.rider = -1
+			var p: Node = players_root.get_node_or_null(str(id))
+			if p:
+				p.ride.rpc_id(id, "")
+
+
+static func _segment_hits_sphere(a: Vector3, b: Vector3, c: Vector3, r: float) -> bool:
+	var ab := b - a
+	var t := clampf((c - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+	return (a + ab * t).distance_to(c) < r
+
+
 # --- Main loop -------------------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
@@ -1865,8 +2244,10 @@ func _physics_process(delta: float) -> void:
 	if _event() != "power_cut":
 		_cctv_step(delta, players)
 	_update_balls()
+	_uncle_chatter(players)
 	_coin_step(players)
 	_voice_step(delta)
+	_chaos_step(players, delta)
 	for id in players:
 		_update_player(id, players[id], delta)
 		if status[id].state != "class" or players[id].hidden:
@@ -2360,7 +2741,7 @@ func _think(b: Dictionary, delta: float, players: Dictionary) -> void:
 			elif b.get("tells", false):
 				_start_report(b, spotted)
 			else:
-				npc.say(["Chor! Chor! Somebody catch them!", "Shhh! PRINCIPAL MA'AM!"][0 if npc.name == "Uncle" else 1], 2.5)
+				npc.say(["THIEF! Somebody catch them!", "Shhh! PRINCIPAL MA'AM!"][0 if npc.name == "Uncle" else 1], 2.5)
 				_call_help(spotted, players[spotted].global_position, npc.display_name)
 			return
 		if b.state not in ["attendance", "evacuate"]:
@@ -2584,7 +2965,7 @@ func _gate_guard(b: Dictionary, delta: float) -> void:
 				b.timer = 8.0
 				npc.stop(float(b.home_yaw) + PI / 2.0)
 				npc.holding = true
-				npc.say("Chai break... ahh.", 3.0)
+				npc.say(Lines.pick(_rng, "Guard", "break"), 3.0)
 		"break":
 			npc.stop(float(b.home_yaw) + PI / 2.0)
 			if b.timer <= 0.0:
@@ -2749,7 +3130,7 @@ func _start_chase(b: Dictionary, id: int, pos: Vector3) -> void:
 	b.npc.alert = 2
 	b.npc.pose = 0
 	b.npc.holding = false
-	b.npc.say(SHOUTS[_rng.randi() % SHOUTS.size()], 2.5)
+	b.npc.say(Lines.pick(_rng, str(b.npc.name), "spot", _name(id)), 2.5)
 	_fx_all("whistle", b.npc.global_position, str(id))
 	_log("%s spotted %s!" % [b.npc.display_name, _name(id)])
 
@@ -2798,7 +3179,7 @@ func _chase_step(b: Dictionary, delta: float, players: Dictionary) -> void:
 	if b.lost > 4.0:
 		st.state = "class"
 		st.sus = 60.0
-		npc.say("Hmph. Lost them.", 2.0)
+		npc.say(Lines.pick(_rng, str(npc.name), "lost", _name(id)), 2.0)
 		_log("%s escaped %s." % [_name(id), npc.display_name])
 		if float(b.min_dist) < float(st.closest):
 			st.closest = float(b.min_dist)
@@ -2870,6 +3251,7 @@ func _end_chase(b: Dictionary) -> void:
 
 
 func _catch(b: Dictionary, id: int, reason := "") -> void:
+	_off_trolley(id)
 	var st: Dictionary = status[id]
 	st.question = {}
 	st.catches = int(st.catches) + 1
@@ -2907,7 +3289,7 @@ func _catch(b: Dictionary, id: int, reason := "") -> void:
 	st.sus = 0.0
 	st.bunking = false
 	st.pass_until = -1.0
-	b.npc.say(reason if reason != "" else "Gotcha! Principal's office. NOW.", 3.0)
+	b.npc.say(reason if reason != "" else Lines.pick(_rng, str(b.npc.name), "catch", _name(id)), 3.0)
 	_fx.rpc_id(id, "caught", Vector3.ZERO, "")
 	_log("%s was caught by %s! Detention." % [_name(id), b.npc.display_name])
 	_teleport(id, campus.detention_spot, 0.0)
@@ -3288,6 +3670,9 @@ func _can_see_from(eye: Vector3, fwd: Vector3, p: Node3D, view_range: float, fov
 		var flat := Vector3(to.x, 0, to.z).normalized()
 		if fwd.dot(flat) < cos(deg_to_rad(fov_deg * 0.5)):
 			return false
+	for c: Dictionary in world.clouds:
+		if float(c.until) > elapsed and _segment_hits_sphere(eye, target, (c.p as Vector3) + Vector3(0, 1.1, 0), float(c.r)):
+			return false  # extinguisher smoke
 	var query := PhysicsRayQueryParameters3D.create(eye, target, 1)
 	return players_root.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 

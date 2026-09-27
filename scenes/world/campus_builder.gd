@@ -204,9 +204,56 @@ func build(root: Node3D, which := 0) -> void:
 		_build_classic()
 	grounds.build(self)  # the map's own academic complex (if any) and grounds
 	_seat_interactables()
+	_chaos_props()
 	_outer_ground(grounds.classic)
 	_clouds()
 	_commit()
+
+
+## Things to cause trouble with, placed from what every map already has: a fire
+## extinguisher beside each fire alarm, a mop bucket in each washroom.
+func _chaos_props() -> void:
+	var was := _oy
+	_oy = 0.0
+	for it: Dictionary in interactables.duplicate():
+		if it.kind != "alarm" or not it.has("wall"):
+			continue
+		var wall: Vector3 = it.wall
+		var out: Vector3 = (it.pos as Vector3) - wall
+		out.y = 0.0
+		out = out.normalized()
+		var side := out.cross(Vector3.UP).normalized()
+		var at := wall + side * 0.55 + out * 0.16
+		_vbox(at + Vector3(0, 0.6, 0), Vector3(0.2, 0.52, 0.2), Color("d8342c"))
+		_vbox(at + Vector3(0, 0.9, 0), Vector3(0.09, 0.1, 0.09), Color("26262e"))
+		_vbox(at + out * 0.1 + Vector3(0, 0.62, 0), Vector3(0.13, 0.15, 0.02), Color.WHITE)
+		_vbox(at - out * 0.12 + Vector3(0, 0.8, 0), Vector3(0.24, 0.06, 0.06), Color("3a3d47"))  # wall bracket
+		interactables.append({"kind": "pickup", "item": "extinguisher", "pos": (it.pos as Vector3) + side * 0.55,
+			"label": "Take the fire extinguisher"})
+	var buckets: Array[Vector3] = []
+	for it: Dictionary in interactables.duplicate():
+		if it.kind != "hide" or not "stall" in str(it.label).to_lower():
+			continue
+		var out_pos: Vector3 = it.pos
+		var far := true
+		for b in buckets:
+			if b.distance_to(out_pos) < 8.0:
+				far = false
+		if not far:
+			continue
+		var stall: Vector3 = lockers[int(it.index)].pos
+		var away := out_pos - stall
+		away.y = 0.0
+		away = away.normalized()
+		var at := out_pos + away * 0.8 + away.cross(Vector3.UP) * 0.5
+		at.y = out_pos.y
+		buckets.append(out_pos)
+		_vbox(at + Vector3(0, 0.2, 0), Vector3(0.42, 0.4, 0.42), Color("ffd24a"))
+		_vbox(at + Vector3(0, 0.39, 0), Vector3(0.36, 0.02, 0.36), Color("7fd0ea"))  # dirty water
+		_vbox(at + Vector3(0.1, 0.85, 0.05), Vector3(0.05, 1.1, 0.05), Color("8a5a3a"))  # mop handle
+		_vbox(at + Vector3(0.1, 0.36, 0.05), Vector3(0.2, 0.14, 0.2), Color("e8e2d4"))  # mop head
+		interactables.append({"kind": "bucket", "pos": at, "label": "Kick over the mop bucket (wet floor!)"})
+	_oy = was
 
 
 ## Players' seats (0-7 in each classroom) are chairs: [E] Sit down.
@@ -908,9 +955,10 @@ const OBJECT_NAMES := {
 	"counter": "Canteen counter", "register": "Attendance register", "notice": "Notice board", "car": "Principal's car",
 	"bell": "Staff room bell", "alarm": "Fire alarm", "service_gate": "Service gate", "toilet": "Toilet",
 	"cistern": "Cistern", "return_book": "Library desk", "piano": "Piano", "drums": "Drums", "essay": "Detention desk",
-	"seat": "Desk", "hoop": "Basketball hoop",
+	"seat": "Desk", "hoop": "Basketball hoop", "bucket": "Mop bucket",
 }
-const PICKUP_NAMES := {"exam_paper": "Exam paper", "medical_note": "Medical notes cupboard", "canteen_key": "Canteen key"}
+const PICKUP_NAMES := {"exam_paper": "Exam paper", "medical_note": "Medical notes cupboard", "canteen_key": "Canteen key",
+	"extinguisher": "Fire extinguisher"}
 
 
 func object_near(pos: Vector3, radius := 1.4) -> String:
@@ -1239,7 +1287,7 @@ func _cctv_and_alarms() -> void:
 		_block(Vector3(x, 1.5, -3.83), Vector3(0.3, 0.4, 0.1), Color("e0524f"), 0.0)
 		_block(Vector3(x, 1.45, -3.77), Vector3(0.14, 0.08, 0.04), Color.WHITE, 0.0)
 		_label("FIRE", Vector3(x, 1.64, -3.77), 18, Color.WHITE, 0.0, 0)
-		_interactable("alarm", Vector3(x, 0, -3.1), "Pull the fire alarm")
+		_interactable("alarm", Vector3(x, 0, -3.1), "Pull the fire alarm", {"wall": Vector3(x, 0, -3.83)})
 
 
 ## A sweeping camera on a bracket. It watches 16 m ahead and calls the nearest staff.
