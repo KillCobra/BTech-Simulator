@@ -327,6 +327,13 @@ func _on_effect(kind: String, pos: Vector3, extra: String) -> void:
 			_spray_cloud(pos, extra)
 		"samosa_arc":
 			_fly_samosa(pos, extra)
+		"ring":
+			for k in 3:
+				get_tree().create_timer(k * 0.45).timeout.connect(Sfx.play_at.bind("phone", pos, 8.0, 1.1))
+			if extra == str(multiplayer.get_unique_id()):
+				Sfx.play("phone", 0.0, 1.1)
+		"pa":
+			Sfx.play("bell", -14.0, 2.2)
 		"shout":
 			var parts := extra.split("|", true, 1)
 			var who := _players_root.get_node_or_null(parts[0])

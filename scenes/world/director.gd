@@ -114,7 +114,7 @@ var rooms := []   # per classroom: {"attendance_in", "calling", "exam_at", "exam
 var feed := []    # [{"t": elapsed, "text": String}]
 var marks := []   # [{"pos": Vector3, "npc": String, "by": String, "until": float}]
 var world := {"alarm_until": -100.0, "alarm_ready": 0.0, "gate_until": -100.0, "taken": {}, "stash": {},
-	"puddles": [], "clouds": [], "calls": [], "bucket_ready": {},
+	"puddles": [], "clouds": [], "calls": [], "bucket_ready": {}, "held": {},
 	"period": 0, "periods": 3, "period_len": 160.0, "period_start": 0.0, "passing_until": -100.0, "coins": [],
 	"heat": 1, "heat_bumps": 0, "party_at": -1.0, "party_until": -100.0, "race_winner": -1, "race_end_at": -1.0}
 var elapsed := 0.0
@@ -603,7 +603,8 @@ func request(action: String, args: Dictionary) -> void:
 		return
 	# Out of the university: you can still ping, trade, boost a friend and throw paper
 	# balls back over the wall to pull staff away from friends still inside.
-	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver", "outside_bell", "shout", "call_office"]:
+	if st.state == "escaped" and action not in ["ping", "give", "throw", "boost", "help_answers", "prank_call", "deliver", "outside_bell", "shout",
+			"call_office", "announce", "open_gate", "call"]:
 		return
 	match action:
 		"interact": _on_interact(id, p, int(args.get("i", -1)))
@@ -630,6 +631,10 @@ func request(action: String, args: Dictionary) -> void:
 		"give": _on_give(id, p, int(args.get("to", -1)), int(args.get("cash", 0)), int(args.get("slot", -1)))
 		"shout": _on_shout(id, p, int(args.get("k", 0)))
 		"trolley": _on_trolley(id, p, str(args.get("name", "")))
+		"hold_door": _on_hold_door(id, p, int(args.get("i", -1)), int(args.get("friend", -1)))
+		"announce": _on_announce(id, int(args.get("k", 0)))
+		"open_gate": _on_remote_gate(id)
+		"call": _on_call(id, int(args.get("to", -1)))
 		"trolley_off": _off_trolley(id)
 		"excuse": _on_excuse(id, p, int(args.get("k", -1)))
 		"vouch": _on_vouch(id, p, int(args.get("friend", -1)))
@@ -1375,8 +1380,7 @@ func _on_throw(id: int, p: Node3D, from: Vector3, dir: Vector3) -> void:
 		var pulled := _noise(pos, 11.0)
 		if status.has(id):
 			status[id].best_distraction = maxi(int(status[id].best_distraction), pulled)
-		if str(_rules.get("mode", "")) == "race":
-			_paper_hit(id, pos))
+		_paper_hit(id, pos))
 
 
 ## Music room: play a note on the piano or the drums (loud: staff come to look).
@@ -1712,9 +1716,12 @@ func _paper_hit(id: int, pos: Vector3) -> void:
 		if other == id or q == null or status[other].state not in ["class", "chased"]:
 			continue
 		if q.global_position.distance_to(pos) < 1.8:
-			status[other].sus = minf(99.0, float(status[other].sus) + 30.0)
+			var race := str(_rules.get("mode", "")) == "race"
+			status[other].sus = minf(99.0, float(status[other].sus) + (30.0 if race else 12.0))
 			_tell(other, "%s hit you with a paper ball! Everyone's looking..." % _name(id), Color("ff9a4a"))
 			_tell(id, "Direct hit on %s!" % _name(other), Color("7fe0a0"))
+			_moment("paper_hit", id, other)
+			_stat(id, "paper_hits")
 
 
 ## Staff within `radius` (on the same floor) come to look. Returns how many came.
@@ -2181,6 +2188,140 @@ static func _segment_hits_sphere(a: Vector3, b: Vector3, c: Vector3, r: float) -
 	return (a + ab * t).distance_to(c) < r
 
 
+# --- The public address system: the academy talks to everyone -----------------------------------
+
+const PA_LINES := [
+	"Students are reminded that fleeing through ventilation systems is not an approved extracurricular activity.",
+	"The Department of Advanced Queueing reminds you: the queue for the queue starts at the queue.",
+	"Lost property: one left shoe, one alibi, and a student's entire sense of direction.",
+	"The Faculty of Theoretical Attendance confirms that you are, in theory, present.",
+	"Today's canteen special: yesterday's samosas, at tomorrow's prices.",
+	"Would the owner of the trolley on the assembly ground please stop driving it at staff.",
+	"A reminder that the fire alarm is for fires. And for fire drills. And for nothing else. Mostly.",
+	"Congratulations to the Chess Club, who have been in the same game since 1994.",
+	"The library would like its silence back. Whoever took it, no questions asked.",
+	"Students seen running in the corridors will be made to walk. Slowly. Forever.",
+	"Reminder: the wet floor sign is a warning, not a challenge.",
+	"The principal's car has been touched again. The principal knows. The principal always knows.",
+	"The Bachelor of Unnecessary Science is now accepting applications. Nobody knows why.",
+	"Lunch is cancelled. Lunch is uncancelled. Please stand by for further lunch updates.",
+	"Mr. Mendes would like to know who keeps kicking over his bucket.",
+	"Hall passes are not collectable trading cards. Please stop trading them.",
+]
+const PA_CAUGHT := ["Will %s please report to the principal's office. Immediately.", "%s to the principal's office, please. Bring an excuse.",
+	"Attention: %s has been caught. Again. Let this be a lesson to the rest of you."]
+const PA_HEAT := ["", "", "Staff are reminded to patrol the corridors. Students are reminded that they are being watched.",
+	"Security is increased. The proctor and the vice principal are now walking the upper floors.",
+	"LOCKDOWN. All gates are watched. All chai breaks are cancelled. Everyone: sit down."]
+const PA_SPOTS := [["canteen", "Attention all staff: a parent is waiting for you at the canteen. A very angry parent."],
+	["assembly", "Attention staff: free cake on the assembly ground. First come, first served."],
+	["staffroom", "Emergency staff meeting in the staff room. Now. Bring biscuits."]]
+var _pa_next := 70.0
+
+
+func _announce(text: String) -> void:
+	_fx_all("pa", Vector3.ZERO, text)
+	print("[%.1f] PA: %s" % [elapsed, text])
+
+
+func _pa_step() -> void:
+	if elapsed < _pa_next:
+		return
+	_pa_next = elapsed + _rng.randf_range(80.0, 115.0)
+	_announce(PA_LINES[_rng.randi() % PA_LINES.size()])
+
+
+# --- Pranks and mission control --------------------------------------------------------------------
+
+## Hold a friend's locker (or stall) shut for three seconds.
+func _on_hold_door(id: int, p: Node3D, locker: int, friend: int) -> void:
+	var q: Node3D = players_root.get_node_or_null(str(friend))
+	if q == null or not q.hidden or locker < 0 or locker >= campus.lockers.size():
+		return
+	var spot: Dictionary = campus.lockers[locker]
+	if (spot.pos as Vector3).distance_to(q.global_position) > 0.4 or p.global_position.distance_to(spot.out) > 2.2:
+		return
+	if not _cooldown(id, "hold_door", 8.0):
+		return
+	world.held[str(locker)] = elapsed + 3.0
+	_tell(friend, "The door won't open! %s is holding it shut!" % _name(id), Color("ff9a4a"))
+	_tell(id, "Holding %s in. Three seconds of pure evil." % _name(friend), Color("7fe0a0"))
+	_stat(id, "pranks")
+	_moment("hold_door", id, friend)
+	_moment("held_in", friend, id)
+
+
+## Escaped: a fake announcement pulls the staff to one place. Once a round each.
+func _on_announce(id: int, k: int) -> void:
+	var st: Dictionary = status[id]
+	if st.state != "escaped":
+		return
+	if st.get("announced", false):
+		_tell(id, "The office changed the PA password. Once was enough.", Color("ffb37a"))
+		return
+	var pick: Array = PA_SPOTS[clampi(k, 0, PA_SPOTS.size() - 1)]
+	var spot: Vector3 = campus.assembly
+	match str(pick[0]):
+		"canteen":
+			var i := _find_interactable("counter")
+			if i != -1:
+				spot = campus.interactables[i].pos
+		"staffroom":
+			var i := _find_interactable("bell")
+			if i != -1:
+				spot = campus.interactables[i].pos
+	st.announced = true
+	_announce(str(pick[1]))
+	var came := 0
+	for b in _brains:
+		if b.role in ["teacher", "patrol", "gate"] and b.state != "chase" and b.npc.global_position.distance_to(spot) < 70.0 \
+				and absf(b.npc.global_position.y - spot.y) < FLOOR_REACH * 2.0:
+			b.resume = b.state
+			b.state = "investigate"
+			b.timer = 10.0
+			b.npc.pose = 0
+			b.npc.go_to(_path(b.npc.global_position, spot + Vector3(_rng.randf_range(-2, 2), 0, _rng.randf_range(-2, 2))), b.walk * 1.6)
+			b.distracted_until = elapsed + 4.0
+			came += 1
+	st.assists = int(st.assists) + 1
+	_tell(id, "Announcement made. %d staff are on their way. +%d" % [came, ASSIST_POINTS], Color("7fe0a0"))
+	_stat(id, "rescues")
+	_moment("announce", id)
+
+
+## Escaped: the service gate, opened remotely from the security office's phone line. Once a round.
+func _on_remote_gate(id: int) -> void:
+	var st: Dictionary = status[id]
+	if st.state != "escaped":
+		return
+	if st.get("opened_gate", false):
+		_tell(id, "They've changed the gate code.", Color("ffb37a"))
+		return
+	st.opened_gate = true
+	_open_service_gate()
+	st.assists = int(st.assists) + 1
+	_log("%s opened the service gate from outside!" % _name(id))
+	_tell(id, "Service gate open for %d s. Tell your friends! +%d" % [int(GATE_OPEN_TIME), ASSIST_POINTS], Color("7fe0a0"))
+	_moment("gate", id)
+
+
+## Escaped: call a friend inside. Their phone RINGS (staff nearby hear it), then the
+## two of you can talk from anywhere for 40 s.
+func _on_call(id: int, to: int) -> void:
+	var q: Node3D = players_root.get_node_or_null(str(to))
+	if q == null or not status.has(to) or status[to].state == "escaped" or to == id or status[id].state != "escaped":
+		return
+	if not _cooldown(id, "call", 60.0):
+		_tell(id, "Your phone's cooling down. Try again in a bit.", Color("ffb37a"))
+		return
+	(world.calls as Array).append([id, to, elapsed + 40.0])
+	_fx_all("ring", q.global_position, str(to))
+	_heard(to, 7.0)  # *RING RING*
+	_tell(to, "%s is calling! You can talk to them from anywhere for 40 s. (Staff heard your phone...)" % _name(id), Color("7fe0a0"))
+	_tell(id, "Calling %s: you can talk for 40 s." % _name(to), Color("7fe0a0"))
+	_moment("call", id, to)
+
+
 # --- Main loop -------------------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
@@ -2245,6 +2386,7 @@ func _physics_process(delta: float) -> void:
 		_cctv_step(delta, players)
 	_update_balls()
 	_uncle_chatter(players)
+	_pa_step()
 	_coin_step(players)
 	_voice_step(delta)
 	_chaos_step(players, delta)
@@ -2632,6 +2774,7 @@ func _update_heat(quiet: bool) -> void:
 		if rose and not quiet:
 			_log(Rules.HEAT_NAMES[heat].to_upper())
 			_fx_all("heat", Vector3.ZERO, str(heat))
+			_announce(PA_HEAT[clampi(heat, 1, 4)])
 	for k in range(_pending_staff.size() - 1, -1, -1):
 		if int(_pending_staff[k][0]) <= int(world.heat):
 			(_pending_staff[k][1] as Callable).call()
@@ -3290,6 +3433,7 @@ func _catch(b: Dictionary, id: int, reason := "") -> void:
 	st.bunking = false
 	st.pass_until = -1.0
 	b.npc.say(reason if reason != "" else Lines.pick(_rng, str(b.npc.name), "catch", _name(id)), 3.0)
+	_announce(PA_CAUGHT[_rng.randi() % PA_CAUGHT.size()] % _name(id))
 	_fx.rpc_id(id, "caught", Vector3.ZERO, "")
 	_log("%s was caught by %s! Detention." % [_name(id), b.npc.display_name])
 	_teleport(id, campus.detention_spot, 0.0)
@@ -3524,6 +3668,8 @@ func _release(id: int, why: String) -> void:
 ## Help Out: ring the principal's office. They step out to take the call: half the
 ## time left for everyone in detention.
 func _on_call_office(id: int, to: int) -> void:
+	if status[id].state != "escaped":
+		return
 	if not status.has(to) or status[to].state != "detention":
 		_tell(id, "Nobody's in detention right now.", Color("ffb37a"))
 		return

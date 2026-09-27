@@ -294,6 +294,10 @@ var _question: PanelContainer
 var _question_col: VBoxContainer
 var _question_sig := ""
 var _question_bar: ColorRect
+# The academy's public address system.
+var _pa: PanelContainer
+var _pa_label: Label
+var _pa_until := 0.0
 
 
 func _ready() -> void:
@@ -861,11 +865,18 @@ func setup_map(campus: RefCounted) -> void:
 		if arg == "--helpbot":  # dev: once escaped, send every kind of help to the other players
 			get_tree().create_timer(14.0).timeout.connect(func():
 				var director: Node = get_parent().get_node("Director")
+				director.request.rpc_id(1, "announce", {"k": 0})
+				director.request.rpc_id(1, "open_gate", {})
 				for pid in director.status:
 					if int(pid) != multiplayer.get_unique_id():
-						for action in ["help_answers", "prank_call", "deliver", "give"]:
+						for action in ["help_answers", "prank_call", "deliver", "give", "call", "call_office"]:
 							director.request.rpc_id(1, action, {"to": int(pid), "score": 80, "cash": 10})
 							await get_tree().create_timer(0.5).timeout)
+		if arg == "--cctv":  # dev: once escaped, look through the first CCTV camera
+			get_tree().create_timer(12.0).timeout.connect(func():
+				var me: Node = get_parent().get_node("Players").get_node_or_null(str(multiplayer.get_unique_id()))
+				if me:
+					me.watch_cctv(0))
 		if arg == "--stylepop":  # dev: style pop-ups for screenshots
 			for k in 3:
 				get_tree().create_timer(5.0 + k * 0.5).timeout.connect(on_effect.bind("style", Vector3.ZERO, ["CLOSE CALL|50", "SILENT|30", "SHOOK THEM OFF|60"][k]))
@@ -1796,6 +1807,19 @@ func _app_help(director: Node, me_node: Node, st: Dictionary) -> void:
 		elif now_s < me_node.phone_ready:
 			scan_txt = "Tracker recharging  %ds" % int(ceil(me_node.phone_ready - now_s))
 		_phone_body.add_child(_phone_button(scan_txt, func(): me_node.scan_staff(), Color("ff8aa8"), now_s >= me_node.phone_ready))
+		if _campus.cctv.size() > 0:
+			_phone_body.add_child(_phone_button("Watch the CCTV (see the staff)", func():
+				toggle_phone()
+				me_node.watch_cctv(0), Color("b07cff")))
+	if not bool(st.get("announced", false)):
+		_phone_text("\nFAKE ANNOUNCEMENT (once): pull the staff to...", 11, Color("9fd8ff"))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		_phone_body.add_child(row)
+		for k in director.PA_SPOTS.size():
+			row.add_child(_phone_button(["Canteen", "Assembly", "Staff room"][k], func(): director.request.rpc_id(1, "announce", {"k": k}), Color("ffd24a")))
+	if not bool(st.get("opened_gate", false)):
+		_phone_body.add_child(_phone_button("Open the service gate (once)", func(): director.request.rpc_id(1, "open_gate", {}), Color("7fe0a0")))
 	var me := multiplayer.get_unique_id()
 	var any := false
 	for pid in director.status:
@@ -1843,6 +1867,7 @@ func _app_help(director: Node, me_node: Node, st: Dictionary) -> void:
 			Color("ffd24a"), int(st.get("cash", 0)) >= 10))
 		grid.add_child(_phone_button("Samosa Rs %d" % director.DELIVERY_PRICE, func(): director.request.rpc_id(1, "deliver", {"to": id}),
 			Color("e0a050"), int(st.get("cash", 0)) >= director.DELIVERY_PRICE))
+		_phone_body.add_child(_phone_button("Call %s (their phone rings!)" % who, func(): director.request.rpc_id(1, "call", {"to": id}), Color("7fd0ea")))
 		var watching: bool = me_node != null and int(me_node.get("spectating")) == id
 		_phone_body.add_child(_phone_button("Stop watching" if watching else "Watch %s" % who,
 			func(): if me_node: me_node.spectate(-1 if watching else id), Color("b07cff")))
@@ -2274,10 +2299,64 @@ func on_effect(kind: String, _pos: Vector3, extra: String) -> void:
 			_show_intro.call_deferred()
 		"splat":
 			_splat(extra)
+		"pa":
+			_show_pa(extra)
 		"hint_proxy":
 			toast("%s is missing! [%s] answer \"Present!\" for them" % [extra, GameInput.key_label("proxy")], Color("7fe0a0"))
 		"win":
 			_show_escape_moment()
+
+
+var _cctv_tint: ColorRect
+var _cctv_rec: Label
+
+
+## Looking through a CCTV camera (escaped): a grey tint and a blinking REC.
+func _refresh_cctv(me: Node, director: Node) -> void:
+	if me != null and director.round_over and int(me.get("cctv")) >= 0:
+		me.watch_cctv(-1)
+	var on: bool = me != null and int(me.get("cctv")) >= 0
+	if on and _cctv_tint == null:
+		_cctv_tint = ColorRect.new()
+		_cctv_tint.color = Color(0.2, 0.3, 0.25, 0.28)
+		_cctv_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_cctv_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_cctv_tint)
+		move_child(_cctv_tint, 0)
+		_cctv_rec = _outlined("", 22)
+		_cctv_rec.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_cctv_rec.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_cctv_rec.position.y = 190
+		_cctv_rec.add_theme_color_override("font_color", Color("ff4a4a"))
+		_frame.add_child(_cctv_rec)
+	if _cctv_tint:
+		_cctv_tint.visible = on
+		_cctv_rec.visible = on
+		if on:
+			var t := Time.get_datetime_dict_from_system()
+			_cctv_rec.text = "%s REC   CAM %02d   %02d:%02d:%02d" % ["●" if int(_now() * 2.0) % 2 == 0 else "  ", int(me.cctv) + 1, t.hour, t.minute, t.second]
+
+
+## ANNOUNCEMENT: across the top of the screen for a few seconds.
+func _show_pa(text: String) -> void:
+	if _pa == null:
+		_pa = PanelContainer.new()
+		_pa.add_theme_stylebox_override("panel", _card(Color("24315e"), 10, 10))
+		_pa.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_pa.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_pa.position.y = 150
+		_pa.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_frame.add_child(_pa)
+		_pa_label = Label.new()
+		_pa_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_pa_label.custom_minimum_size.x = 520
+		_pa_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_pa_label.add_theme_font_size_override("font_size", 17)
+		_pa_label.add_theme_color_override("font_color", Color("ffd24a"))
+		_pa.add_child(_pa_label)
+	_pa_label.text = "ANNOUNCEMENT:  " + text
+	_pa.visible = not debug_camera
+	_pa_until = _now() + clampf(text.length() * 0.07, 4.0, 9.0)
 
 
 ## A samosa to the face: a greasy splat that slides off.
@@ -2433,6 +2512,9 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 	_refresh_phone(director, me, st, delta)
 	_refresh_mic(st)
 	_refresh_question(director, st)
+	if _pa and _pa.visible and _now() > _pa_until:
+		_pa.visible = false
+	_refresh_cctv(me, director)
 	_update_route(director, me, st)
 	_update_warning(cam, st, delta)
 	var heat := int(director.world.get("heat", 1))
@@ -2660,7 +2742,7 @@ func _refresh_markers(director: Node, me: Node, cam: Camera3D, npcs: Node, playe
 		var text := "%s  (%s)" % [name_txt, m.by] if kind != "place" else "Location: %s  (%s)" % [name_txt if name_txt != "" else "here", m.by]
 		var color := Color("ffd24a") if kind == "person" else (Color("7fd0ea") if kind == "object" else Color("7fe0a0"))
 		_add_marker(cam, pos, text, color)
-	if me and Time.get_ticks_msec() / 1000.0 < me.phone_until:
+	if me and Time.get_ticks_msec() / 1000.0 < me.phone_until and not director.round_over:
 		# Nearest staff first, only a few named at a time: walk around and the
 		# tags follow whoever is closest, instead of a pile of unreadable names.
 		var staff: Array = npcs.get_children().filter(func(n): return n.role != "extra")

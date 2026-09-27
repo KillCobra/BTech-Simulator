@@ -82,6 +82,7 @@ var _sit_intro := 0.0      # seconds left of the third-person "sitting down" sho
 var _cine_fov := 55.0
 var _escape_t := 0.0       # seconds left of the look back at the university you just escaped
 var spectating := -1       # escaped: watching this friend (peer id), -1 = not
+var cctv := -1             # escaped: watching this CCTV camera (index), -1 = not
 var _tumble_t := 0.0       # local: seconds left on the floor
 var _tilt := 0.0           # knocked-over lean of the body (all peers)
 var _riding := ""          # local: name of the trolley we're sitting in
@@ -262,6 +263,12 @@ func _from_server() -> bool:
 
 
 func _toggle_locker(i: int) -> void:
+	if hidden and _director and float(_director.world.get("held", {}).get(str(_locker), -1.0)) > _director.elapsed:
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud:
+			hud.toast("It won't open! Someone's holding the door shut!", Color("ff9a4a"))
+		Sfx.play("deny", -4.0, 0.8)
+		return
 	if hidden:
 		position = _lockers[_locker].out
 		hidden = false
@@ -284,6 +291,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if spectating >= 0 and (event.is_action_pressed("jump") or event.is_action_pressed("interact")):
 		spectate(-1)  # back to your own eyes
 		get_viewport().set_input_as_handled()
+		return
+	if cctv >= 0:
+		if event.is_action_pressed("jump"):
+			watch_cctv(-1)
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("interact") and _world:
+			watch_cctv((cctv + 1) % maxi(1, _world.campus.cctv.size()))
+			get_viewport().set_input_as_handled()
 		return
 	if _sit_intro > 0.0:
 		if event.is_action_pressed("interact") or event.is_action_pressed("jump"):
@@ -498,6 +513,8 @@ func _interact() -> void:
 			_request("vouch", {"friend": _target.id})
 		"trolley":
 			_request("trolley", {"name": _target.name})
+		"hold":
+			_request("hold_door", {"i": _target.index, "friend": _target.friend})
 		"give":
 			if _target.has("cash"):
 				_request("give", {"to": _target.id, "cash": int(_target.cash)})
@@ -610,6 +627,12 @@ func _find_target() -> Dictionary:
 		if d < 1.9 and (d < 0.6 or dot > 0.1) and score < best_score:
 			best_score = score
 			best = {"type": "hide" if it.kind == "hide" else "object", "index": it.get("index", i) if it.kind == "hide" else i, "label": it.label}
+			if it.kind == "hide":
+				var spot: Vector3 = _lockers[int(it.index)].pos
+				for p in get_parent().get_children():
+					if p != self and p.hidden and p.global_position.distance_to(spot) < 0.4:
+						best = {"type": "hold", "index": int(it.index), "friend": int(str(p.name)),
+							"label": "Hold the door shut on %s (prank!)" % p.display_name}
 			if it.kind == "pickup" and _director and float(_director.world.taken.get(i, -1.0)) > _director.elapsed:
 				best.label = "(already taken)"
 			if it.kind == "cistern" and _director and _director.world.stash.has(str(i)):
@@ -647,6 +670,8 @@ func _physics_process(delta: float) -> void:
 		if spectating >= 0:
 			var friend: Node = get_parent().get_node_or_null(str(spectating))
 			interact_hint = "Watching %s   [%s] back to you" % [friend.display_name if friend else "a friend", GameInput.key_label("jump")]
+		elif cctv >= 0:
+			interact_hint = "CCTV CAM %d/%d   [%s] next camera   [%s] back to you" % [cctv + 1, _world.campus.cctv.size(), GameInput.key_label("interact"), GameInput.key_label("jump")]
 		elif _talk_npc != null or _sit_intro > 0.0:
 			interact_hint = ""
 		elif seated:
@@ -723,7 +748,7 @@ func _move(delta: float) -> void:
 
 	# With the phone out you can still walk (no sprinting): the mouse taps the screen.
 	var phone := _phone_open()
-	var has_control := (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or phone) and _instrument < 0 and _talk_npc == null and spectating < 0 and _escape_t <= 0.0
+	var has_control := (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or phone) and _instrument < 0 and _talk_npc == null and spectating < 0 and cctv < 0 and _escape_t <= 0.0
 	if _tumble_t > 0.0:
 		# On the floor: slide to a stop, no control until you're up.
 		_tumble_t -= delta
@@ -974,7 +999,30 @@ func _cine_begin(shot: Transform3D, fov := 55.0) -> void:
 
 
 func _cine_on() -> bool:
-	return _talk_npc != null or _sit_intro > 0.0 or _escape_t > 0.0 or spectating >= 0
+	return _talk_npc != null or _sit_intro > 0.0 or _escape_t > 0.0 or spectating >= 0 or cctv >= 0
+
+
+## Escaped: look through CCTV camera `k` (-1: back to your own eyes). The staff
+## tracker runs while you watch, so you can guide friends past them.
+func watch_cctv(k: int) -> void:
+	if not is_multiplayer_authority() or _world == null:
+		return
+	cctv = k if k < _world.campus.cctv.size() else -1
+	if cctv >= 0:
+		spectating = -1
+		phone_until = Time.get_ticks_msec() / 1000.0 + 600.0
+		_cctv_frame()
+		_cine_begin(_talk_shot, 70.0)
+	else:
+		phone_until = 0.0
+
+
+func _cctv_frame() -> void:
+	var cam: Dictionary = _world.campus.cctv[cctv]
+	var yaw: float = _director.cctv_yaw(cam, _director.elapsed) if _director else float(cam.base_yaw)
+	var fwd := Vector3(-sin(yaw), -0.45, -cos(yaw)).normalized()
+	var at: Vector3 = (cam.pos as Vector3) + fwd * 0.45  # just in front of the lens, not inside the camera
+	_talk_shot = Transform3D(Basis(), at).looking_at(at + fwd, Vector3.UP)
 
 
 ## You're out: the camera swings round in front of you and looks back at the university.
@@ -1141,6 +1189,8 @@ func _talk_step(delta: float) -> void:
 		_escape_t = maxf(0.0, _escape_t - delta)
 	if spectating >= 0:
 		_spectate_frame()
+	if cctv >= 0:
+		_cctv_frame()
 	if _talk_cam == null:
 		return
 	var on := _cine_on()
