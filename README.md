@@ -2,7 +2,7 @@
 
 [![Bunk Master teaser: click to watch the trailer](media/teaser.gif)](media/BunkMaster-trailer.mp4)
 
-**[Watch the 30 s trailer (MP4)](media/BunkMaster-trailer.mp4)** · [Download the latest release](https://github.com/KillCobra/BTech-Simulator/releases/latest)
+**[Watch the 30 s trailer (MP4)](media/BunkMaster-trailer.mp4)** · [Download the latest release](https://github.com/KillCobra/BunkMaster/releases/latest)
 
 Multiplayer first-person college bunk simulator (Godot 4.4, Windows and Mac). You're a student at the Royal
 Academy of Unnecessary Sciences. Sneak out of class with your friends, whisper over proximity voice chat while
