@@ -1,5 +1,9 @@
 # Bunk Master
 
+[![Bunk Master teaser: click to watch the trailer](media/teaser.gif)](media/BunkMaster-trailer.mp4)
+
+**[Watch the 30 s trailer (MP4)](media/BunkMaster-trailer.mp4)** · [Download the latest release](https://github.com/KillCobra/BTech-Simulator/releases/latest)
+
 Multiplayer first-person college bunk simulator (Godot 4.4, Windows and Mac). You're a student at the Royal
 Academy of Unnecessary Sciences. Sneak out of class with your friends, whisper over proximity voice chat while
 the teacher can hear you, talk your way out when you're caught, knock the staff over with a trolley, blame a
@@ -234,6 +238,8 @@ in `scenes/world/maps/grounds.gd`. Audio is synthesized at startup by `autoload/
 Rules and NPC brains: `scenes/world/director.gd`. Framework + First Day's school: `scenes/world/campus_builder.gd`.
 Maps: `scenes/world/maps/` (list in `maps.gd`; outdoor toolkit `grounds.gd`; building toolkit `academic_kit.gd`
 builds wings of corridors, rooms and stairwells from room lists).
+
+Trailer: `videos/` is the Remotion project that makes `media/BunkMaster-trailer.mp4` (see `videos/README.md`; `npm install` there first). The README teaser `media/teaser.gif` is 12 s of it.
 
 Build the exe: `godot --headless --path . --export-release "Windows Desktop" export/BunkMaster.exe`
 (the preset uses the template in `export/templates/`; or install Godot's export templates and clear the custom path).
