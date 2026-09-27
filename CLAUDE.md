@@ -16,3 +16,7 @@
 - Compile check: `godot --headless --path . --quit-after 60` and grep for `SCRIPT ERROR|Parse Error`.
 - Bot/dev flags are listed in README.md ("Develop"). Floating-prop audit: `godot --headless --path . -s scripts/prop_audit.gd`.
 - `export/` is git-ignored (local builds only).
+- Multiplayer bugs only show with two instances: `--session-host=NAME` in one, `--session-join=NAME --autoready` in the
+  other (headless is fine). The Director's small `world` dict is sent unreliably and must stay under the 1350-byte
+  MTU (grep host logs for "bigger than MTU"); put bigger or rarer state in `things`.
+- Staff hearing without a mic: `--voice-test=AMP`. Each round prints `[moments]` (longest stretch where nothing happened).

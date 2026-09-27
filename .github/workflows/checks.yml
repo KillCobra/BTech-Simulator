@@ -40,14 +40,32 @@ jobs:
             exit 1
           fi
 
+      - name: Voice codec
+        run: |
+          timeout 120 "$GODOT" --headless --path . -s scripts/voice_codec_test.gd 2>&1 | tee codec.log || true
+          grep -q "\[voice\] OK" codec.log || { echo "::error::Voice codec test failed"; exit 1; }
+
       - name: Smoke test a whole round (bot player, 5 minutes at 5x speed)
         run: |
-          timeout 150 "$GODOT" --headless --path . -- --host --autostart=1 --minutes=5 --speed=5 --name=CI --map=0 --quit-at-end \
-            "--walk=!wait3;!stand;!coin;!wait2;!sit;!ask:0;!wait4;!ping;!wait300" 2>&1 | tee round.log || true
+          timeout 150 "$GODOT" --headless --path . -- --host --autostart=1 --minutes=5 --speed=5 --name=CI --map=0 --rounds=5 --quit-at-end \
+            --voice-test=0.03 "--walk=!wait3;!stand;!coin;!wait2;!sit;!ask:0;!wait4;!ping;!wait300" 2>&1 | tee round.log || true
           grep -q "Class has started" round.log || { echo "::error::The round never started"; exit 1; }
           grep -q "The final bell rang" round.log || { echo "::error::The round never reached the final bell"; exit 1; }
+          grep -q "staff heard CI" round.log || { echo "::error::Staff never heard the test voice"; exit 1; }
           if grep -E "SCRIPT ERROR" round.log; then
             echo "::error::Script errors during the round"
+            exit 1
+          fi
+
+      - name: Smoke test the chaos (excuses, bucket, extinguisher, trolley; Grand Campus, a first round)
+        run: |
+          timeout 150 "$GODOT" --headless --path . -- --host --autostart=1 --minutes=5 --speed=5 --name=CI --map=1 --rounds=0 --quit-at-end \
+            --question=8 "--walk=!wait3;!stand;!wait5.5;!excuse0;!wait3;!goto:bucket;!interact;!goto:extinguisher;!interact;!use1;!goto:trolley;!interact;!wait1;!interact;!wait300" 2>&1 | tee chaos.log || true
+          grep -q "The final bell rang" chaos.log || { echo "::error::The chaos round never reached the final bell"; exit 1; }
+          grep -q "questions CI" chaos.log || { echo "::error::Nobody questioned the bot"; exit 1; }
+          grep -q "set off a fire extinguisher" chaos.log || { echo "::error::The extinguisher never went off"; exit 1; }
+          if grep -E "SCRIPT ERROR" chaos.log; then
+            echo "::error::Script errors during the chaos round"
             exit 1
           fi
 

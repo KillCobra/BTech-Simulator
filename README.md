@@ -1,8 +1,9 @@
 # Bunk Master
 
-Multiplayer first-person college bunk simulator (Godot 4.4, Windows). You're a student at the Royal
-Academy of Unnecessary Sciences. Sneak out of class, dodge teachers, guards and CCTV, do side quests with
-friends, and escape the whole (very big) university before the final bell.
+Multiplayer first-person college bunk simulator (Godot 4.4, Windows and Mac). You're a student at the Royal
+Academy of Unnecessary Sciences. Sneak out of class with your friends, whisper over proximity voice chat while
+the teacher can hear you, talk your way out when you're caught, knock the staff over with a trolley, blame a
+friend, and escape before the final bell. Make a plan, someone ruins it, improvise, panic, barely get out.
 
 ## Play (no install)
 Download the latest release: `BunkMaster.zip` (Windows: extract it, keep the `.dll` next to `BunkMaster.exe`) or
@@ -29,15 +30,31 @@ too strict (no connection after ~35 s, common on mobile data), the other person 
 side should switch networks. Manual invite codes remain as a fallback (link under the session form).
 
 ## Controls
-WASD move · Shift sprint · Ctrl/C crouch · Space jump · E interact / pick up / drop ball
-· Left-click: shove (or hold to charge and release to shoot the basketball) · 1-3 use items · Q phone
+WASD move · Shift sprint · Ctrl/C crouch · Space jump · E interact / pick up / hand a friend something
+· Left-click: shove (staff or a friend; hold to charge a basketball shot) · 1-3 use items (1-4 pick an excuse)
+· Q phone · V push to talk (if you picked push-to-talk) · B quick shout (no mic needed, then 1-4)
 · H raise hand (ask a question) · G throw paper ball (distraction) · T ping · R answer attendance for a friend
-· M big map (F: switch floor)
-· Tab scores · Esc menu · F10 leave
+· M big map (F: switch floor) · Tab scores · F12 screenshot · Esc menu · F10 leave
+
+Your first round only shows the basics (move, crouch, jump, E, shove); the rest is explained the first time it's
+useful, and the key line at the bottom grows with the rounds you've played.
+
+## Voice chat (proximity)
+Friends hear you from where you stand: clear next to you, quieter down the corridor, muffled through a wall, a
+rumble through a floor. In the lobby everyone hears everyone. **Staff hear how loud you are** (never what you
+say): a whisper carries a metre or two, talking about 8 m, a yell down the corridor (half as far through walls,
+never through floors). Talk in class and the teacher turns round from the board ("Who's talking?!"); talk
+where you shouldn't be and staff come to look; talk in a locker and they know exactly where you are. The HUD
+shows how far you can be heard right now. The host can turn **Staff hear voice chat** OFF in the lobby.
+Settings > VOICE: open mic / push-to-talk (V) / mic off, the microphone, the open-mic threshold (with a live
+meter) and your friends' volume. Use headphones. No mic? B then 1-4 shouts "Psst!", "RUN!", "Over here!" or
+"HELP!" (staff hear those too).
 
 ## Maps
-**First Day** is the small starter map: the original two-storey school in its compound, escape to the chai
-stall across the road. Learn the game here. Every other map has its **own, much bigger university building**
+The lobby offers **First Day** and **Grand Campus** (and Random between them): one small school to learn in and
+one big campus to master. The other three maps below still build and play (`--map=2..4`), parked until those
+two are as good as they can be. **First Day** is the small starter map: the original two-storey school in its
+compound, escape to the chai stall across the road. Every other map has its **own, much bigger university building**
 (many corridors, dozens of rooms, switchback stairwells, classrooms on upper floors) inside huge grounds
 300-450 m across. Escaping means getting out of the building *and* past the university's outer walls. Green stars
 on the big map (M, mouse wheel zoom, F to change floor) mark the ways out.
@@ -52,7 +69,7 @@ on the big map (M, mouse wheel zoom, F to change floor) mark the ways out.
   The 150 m bridge (toll guards, a bridge patrol), the ferry at the east pier, or hop the rocks to a fishing boat.
 - **Downtown Campus** - *Quibble Towers*: two 6-storey towers either side of a courtyard, classes up to the
   5th floor. The north or west checkpoint, a torn fence in the back alley (crouch), or the metro.
-- **Random**: one of the five, picked when class starts.
+- **Random**: one of the unlocked lobby maps, picked when class starts.
 
 Fall in the water and it washes you back to the bank. Every map has its own guards, patrols and cameras;
 in the big buildings the proctor and vice principal patrol the upper corridors.
@@ -76,7 +93,6 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
   binary search), Chemistry (repeat the recipe · element symbols · acid or base?). Up to +100 points, a missed test
   is -50. You get 8 s to sit down once it starts (5 s if you walk in late); after that a teacher who sees you on
   your feet sends you to detention. A photo of the exam paper (staff room) gets you full marks on your next test.
-- **Merit badges:** 100/100 in a test earns that subject's badge, shown top right with a count.
 - **Raise your hand (H):** in your own class, pick a question: intelligent (the teacher likes you: less suspicion,
   calms down faster, Rs 5), quirky (the class laughs) or mischievous (the teacher rants at the board for a while,
   everyone's chance to sneak out, but 30% of the time they see through it: a strike).
@@ -86,15 +102,14 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - **Class change:** the NPC students pack up, walk out and head to their next classroom too.
 - **Pocket money:** coins lie around campus (Rs 5-15, walk over them; new ones turn up elsewhere). You also earn
   Rs 40 per side quest, up to Rs 20 per test and Rs 5 for answering attendance. Spend it at Pappu Uncle's canteen
-  counter (E): Samosa Rs 10, Hall Pass Rs 40, Medical Note Rs 70, Detention Skip Rs 90 (used automatically when
-  you're caught), and upgrades for the round (Signed passes: +15 s per hall pass, up to 3 levels; Soft shoes:
-  staff hear you sprint from half as far). Trade with classmates from the phone.
-- **Phone (Q):** held in your right hand; the mouse taps its screen and you can still walk. The home screen shows
-  the time left and app tiles; tap one to open it (Esc or "Home" goes back). Today (money, tests, messages),
-  Timetable (every period's subject, room and floor, attendance and test times), Wallet (money, upgrades,
-  pockets), Trade (give money or items to a classmate next to you), Tracker (shows staff for 5 s, names on the
-  nearest few only; 20 s to recharge), Navigate (the shortest way to your seat on a little map, how far and which
-  stairs; SHOW ME THE WAY lights the route on the floor and your minimap for 10 s).
+  counter (E): Samosa Rs 10, Hall Pass Rs 40, Medical Note Rs 70, Signed passes (+15 s per hall pass this round,
+  up to 3 levels), and Rs 40 of samosas "for the principal" that get a friend out of detention. Hand a friend an
+  item or Rs 10 by looking at them and pressing E (contraband goes in THEIR bag: their problem if they're caught).
+- **Phone (Q):** held in your right hand; the mouse taps its screen and you can still walk. One home screen answers
+  what you need while sneaking: your class, room and floor, who teaches it and their quirk, attendance and test
+  times, what you're doing (the current quest), your money and pockets, and where your friends are. Navigate
+  shows the shortest way to your seat (SHOW ME THE WAY lights the route on the floor and your minimap for 10 s);
+  Help Out is mission control once you've escaped (below).
 - **Pings (T):** point at something and ping it: people are named (and the marker follows them), objects are
   named ("Fire alarm", "Locker", "Principal's car"...), anywhere else is a location ("Location: Near Canteen").
   Everyone in the session sees them.
@@ -104,11 +119,42 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - **Music room:** play the piano or drums (E, then keys 1-8). Everyone hears it, and so do the staff.
 - **Washrooms:** use the toilet for a no-questions washroom break (-25 suspicion, 20 s to wander back), or hide an
   item in the cistern and fish it out later. Getting caught confiscates the canteen key, medical notes and hall passes.
+- **Caught? Talk your way out.** Staff who grab you ask why you're out of class, and you get 4 s to pick an
+  excuse (1-4): proof in your pocket works best (hall pass, medical note, library book); "washroom" works near a
+  washroom, "Dr. Haddad sent me" works unless he's standing right there, "I'm lost" works on First Day. The same
+  excuse twice never works on the same person, and staff compare notes. Or blame the nearest friend: you walk,
+  they get chased ("YOU TOLD IYER I WAS IN THE WASHROOM?!"). A friend next to you can vouch for you (E). Shoving
+  still works too. Every catch is announced over the PA, by name.
 - **Detention:** starts small and grows with every catch in a round: 8 s, 15 s, 25 s, then 35 s (x0.5 on First
   Day, where the very first catch is only a warning; x1.2 on Downtown). The lines paper opens by itself: just type the
   sentence exactly and press Enter (5 s off each, only 3 s from the 4th catch on), then type the next one. A wrong line flashes red, the paper
-  shakes and the line is wiped: try again. Afterwards you walk back to class yourself (60 s grace); your teacher scolds you and gets
-  stricter (notices more, less wiggle room at your seat). Sit nicely for 45 s to calm them down a notch.
+  shakes and the line is wiped: try again. Shouting in detention adds 3 s. **Friends can get you out:** pull the
+  fire alarm (the principal runs out, so do you), Pappu Uncle's samosa bribe (Rs 40), a paper ball through the
+  office window (two lines done, -10 s), or a call to the office from an escaped friend (halves it). Afterwards
+  you walk back to class yourself (60 s grace); your teacher scolds you and gets stricter (notices more, less
+  wiggle room at your seat). Sit nicely for 45 s to calm them down a notch.
+
+## The staff
+Each teacher plays differently (the period card and phone say who's teaching and their quirk):
+**Ms. Okafor** is hard to fool but soft on good marks (a 70+ average makes her slow to notice you);
+**Mr. Tanaka** sees across the whole room but won't chase you past his corridor; **Dr. Alvarez** hears very
+little and, asked a smart question (H), lectures at the board for 20 s: everyone's chance to leave;
+**Mrs. Iyer** hears everything and believes one excuse from you, once. Aisha the prefect doesn't chase: she runs
+to tell your teacher (shove her before she gets there). Mr. Mendes the caretaker mops as he patrols. Pappu Uncle
+at the canteen has something to say about your wallet, your detentions and the mood of the school.
+
+## Chaos
+- **Knock people over.** Shove a friend (no penalty) and they fly and lie there a moment; two players sprinting
+  into each other both go down; so does anyone hit by a hard basketball. Staff knocked over drop their books and
+  take out whoever they land on.
+- **Wet floors.** Mr. Mendes leaves wet patches; every washroom has a mop bucket to kick over (E). Sprint across
+  one and you slip. So does a teacher chasing you.
+- **Trolleys** on the assembly ground: push (E), let go at speed and it rolls on, flattening staff. A crouching
+  friend can hop in and ride (Space to hop out).
+- **Fire extinguishers** stand by every fire alarm: two sprays of smoke that blind staff and CCTV, knock over
+  whoever's in front and leave slippery foam.
+- **Samosas:** bribe staff up close, throw one at staff further off (they stop to eat), or splat a friend.
+- **Pranks:** hold a friend's locker or stall shut for 3 s (E); a paper ball landing on a friend makes staff look.
 - **Controls:** Settings → CONTROLS to rebind any key.
 - **HUD size:** Settings → HUD SIZE: 1 Small, 2 Normal (default), 3 Large. The whole UI also scales with the window
   (it's laid out for 1280 x 880 and opens at 1440 x 990).
@@ -133,13 +179,21 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
 - Items: Hall Pass (ask your teacher or buy one, 35 s of legal wandering), Samosa (bribe/distract staff or eat it),
   Medical Note (staff room cupboard), Canteen Key.
 - Fire alarm (verandah pillars): staff evacuate to the plaza for 25 s. 150 s cooldown.
-- Escaped? Your phone's **Help Out** app keeps you in the game: sit a friend's test on your phone and text them the
-  answers (their test counts at least your score), prank-call the staff chasing them (10 s distraction), send
-  money, order them a samosa (Rs 15), ring the bell at the gate (the 3 nearest staff come out to look) or WATCH a
-  friend from over their shoulder (Space to come back). Each help is +40 points. You can also throw paper balls
-  back over the wall.
+- Escaped? You're **mission control** (phone > Help Out): look through the CCTV cameras (staff are tracked while
+  you watch; E next camera, Space back), make one fake announcement that pulls the staff to the canteen, the
+  assembly ground or the staff room, open the service gate once, call a friend (their phone RINGS where staff can
+  hear it; then you two can talk from anywhere for 40 s), call the office for a friend in detention, sit a
+  friend's test on your phone and text them the answers, prank-call the staff chasing them, send money or a samosa,
+  ring the bell at the gate, or watch a friend over their shoulder. Each help is +40 points. You can also throw
+  paper balls back over the wall.
 - Score: escape +500 plus time left, side quests +150 each, the whole chain +200, style points, caught -100,
-  spotted -25. Round lengths: 5, 8, 12 or 20 minutes (the big maps take a while).
+  spotted -25. Round lengths: 5, 8 or 12 minutes.
+- **The final bell: the class CCTV archive.** Up to six awards from what actually happened (Closest Call, Biggest
+  Snitch, Most Wanted, Chaos Agent, Loudest, Smooth Talker, Academic Weapon, Guardian Angel, Most Betrayed, Stunt
+  Double, Samosa Enthusiast, Worst Attendance, Detention Regular), then a replay of the round's best moment from a
+  CCTV camera (a snitch, dominoes, a trolley hit, a slip, a catch...). F12 saves a screenshot.
+- **The PA** reads out the academy's notices ("Students are reminded that fleeing through ventilation systems is
+  not an approved extracurricular activity."), every heat level, and every catch by name.
 
 ## Progress, quests and challenges
 - **Your profile** (saved on your PC): XP from every round, levels and ranks (Fresher, Backbencher, Proxy King,
@@ -157,12 +211,14 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
   caretaker start patrolling, 3 sharper CCTV plus the proctor and vice principal upstairs, 4 lockdown (no chai
   breaks, everyone jumpier). Shown under your suspicion meter.
 - **Style:** CLOSE CALL (get out of sight after passing 80% suspicion), SILENT (25 m out of class unseen), SHOOK
-  THEM OFF (lose a chaser), PROXY, QUEST. Each one raises your combo (x2, x3...) until someone spots you.
+  THEM OFF (lose a chaser), PROXY, QUEST: a pop-up and a few points each.
 - **About to be spotted:** the screen edge glows towards whoever is watching and a blip speeds up.
 - **Round events** (6 in 10 rounds): Surprise Inspection, Principal's Birthday (cake at the canteen halfway),
   Rain, Power Cut (no CCTV, dark corridors), Exam Week (tests sooner, double marks).
-- **Daily challenge** (pick it as the map): the same map, event and rule for everyone that day (no hall passes /
-  start broke / escape under 3:00). Escape for +300 XP and Rs 100, once a day.
+- **Daily challenge** (parked for now; dev: `--map=-2`): the same map, event and rule for everyone that day (no
+  hall passes / start broke / escape under 3:00). Escape for +300 XP and Rs 100, once a day.
+- **Your first round** (anyone in the lobby with 0 rounds, on First Day) has no surprise tests and no round
+  event, and the school never gets stricter than heat 2.
 - **Modes:** Class (everyone out = +50% for everyone) or Race (first one out wins +300 and ends the round; paper
   balls that land on a rival make the staff look at them).
 
@@ -185,9 +241,19 @@ Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)
 (test bot) · `--autoready` · `--no-staff` · `--trace` · `--cam=x,y,z,tx,ty,tz` · `--shot=file.png --shot_delay=S` ·
 `--map=-2` (daily) · `--event=inspection|birthday|rain|power_cut|exam_week|none` · `--mode=race` · `--rule=no_pass|broke|speed` ·
 `--heat4` · `--stylepop` · `--nohud` (clean plates for trailers) · `--warn` · `--spectate` · `--bell` · `--fresh-profile` (dev runs use `profile_test.cfg`) ·
-`--bigmap` · `--quit-at-end` · `--phone=-1..6` (home / an app) · `--helpbot` · `--hudsize=1..3` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
-bot actions `!ask:0..2` `!examphoto`
+`--bigmap` · `--quit-at-end` · `--phone=-1..1` (home / Navigate / Help Out) · `--helpbot` · `--hudsize=1..3` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
+`--rounds=N` (pretend to have played N rounds) · `--fresh` (a first-round ruleset) · `--question=S` (the nearest staff grabs and questions
+the host after S s) · `--voice-test=AMP` (a synthetic voice instead of the mic, so staff hearing works headless) · `--voice-echo` ·
+`--no-hear` · `--cctv` (escaped: look through a camera) ·
+bot actions `!ask:0..2` `!examphoto` `!excuse0..3` `!goto:KIND` (stand by the nearest bucket / extinguisher / trolley / any interactable)
+
+Every round prints `[moments]` at the final bell: how often something happened to each player and the longest
+stretch where nothing did (the thing to design away). Voice codec check: `godot --headless --path . -s scripts/voice_codec_test.gd`.
+Networking note: the Director's small `world` dict is sent unreliably and must stay under the 1350-byte MTU (Godot
+drops the whole update otherwise); anything bigger or rarer goes in `things` (reliable, on change). Test two
+players with `--session-host=NAME` in one game and `--session-join=NAME --autoready` in another.
 
 ## Not included
 - Host migration: if the host quits, the round ends for everyone.
-- Steam invites: need a paid Steamworks app ID ($100) and the GodotSteam plugin. Online sessions work today.
+- Steam invites: need a paid Steamworks app ID ($100) and the GodotSteam plugin (it would also relay traffic
+  for networks that can't connect directly, and bring Steam's own voice codec). Online sessions work today.

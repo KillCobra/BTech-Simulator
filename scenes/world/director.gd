@@ -2467,7 +2467,8 @@ func _clip_save(due: Dictionary) -> void:
 		packed.append(row)
 	var events := []
 	for ev: Dictionary in _clip_events:
-		if float(ev.t) >= float(due.t) - CLIP_BEFORE and (not ev.has("say") or keys.has(ev.say)) 				and (not ev.has("pos") or (ev.pos as Vector3).distance_to(focus) < 25.0):
+		if float(ev.t) >= float(due.t) - CLIP_BEFORE and (not ev.has("say") or keys.has(ev.say)) \
+				and (not ev.has("pos") or (ev.pos as Vector3).distance_to(focus) < 25.0):
 			var copy := ev.duplicate()
 			copy.t = float(ev.t) - float(due.t)
 			events.append(copy)
@@ -2944,7 +2945,8 @@ func _report_moments() -> void:
 			longest = maxf(longest, gap)
 			if gap > 45.0:
 				quiet += 1
-		print("[moments] %s: %d moments in %ds, longest quiet stretch %ds, %d quiet stretches over 45 s" 				% [_name(id), times.size() - 2, int(elapsed), int(longest), quiet])
+		print("[moments] %s: %d moments in %ds, longest quiet stretch %ds, %d quiet stretches over 45 s" \
+				% [_name(id), times.size() - 2, int(elapsed), int(longest), quiet])
 
 
 ## Heat: time, catches and fire alarms make the school stricter. New patrols come on duty.
