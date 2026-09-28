@@ -1,0 +1,44 @@
+{
+  "bpm": 128,
+  "bars": 31,
+  "note": "Steam trailer. [bar, beat] from 0 on a 128 BPM grid (beat 0.46875 s, bar 1.875 s). 31 bars = 58.125 s. Each act works in LOCAL bars (src/steam/cues.ts ACTS) and is shifted onto the film by `offsets` (global bar = local bar + offset). SFX cues in src/steam/sfx/<act>.json are LOCAL.",
+  "sections": [
+    {
+      "act": "open",
+      "from": 0,
+      "to": 6,
+      "music": "0-1 cold open: alarm-clock bell + ticking clock (trailer 1 style); 2-3 tense classroom, build + riser, RUN! stab 3.3; 4 DROP 1; 5 full, handoff"
+    },
+    {
+      "act": "dodge",
+      "from": 6,
+      "to": 12,
+      "music": "6-7 sneaky groove (DODGE); 8.0 hit, silence to 8.1, 'Who's talking?!' stab 8.1, 16th stabs 8.2; 9 PROXIMITY VOICE explained: one claim per beat, held (lighter groove, room to read); 10-11 TALK YOUR WAY OUT: excuse rows one per beat, snitch ~11.2, handoff 11.3.5"
+    },
+    {
+      "act": "chaos",
+      "from": 12,
+      "to": 18,
+      "music": "12-13 busy groove, hits on every gag (CAUSE CHAOS); 14-15 SURPRISE TEST, bouncy, one paper per ~2 beats; 16-17 merit badge then PAPPU UNCLE'S CANTEEN: items land one per beat (chimes), buys, quest done, handoff 17.3.5"
+    },
+    {
+      "act": "crew",
+      "from": 18,
+      "to": 23,
+      "music": "18-19 lift, major, claps (8 friends); 20-21 ESCAPE THE WHOLE UNIVERSITY maps build; 22 exits on 8ths, crash zoom 22.3, silence 22.3.5-23.0"
+    },
+    {
+      "act": "finale",
+      "from": 23,
+      "to": 31,
+      "music": "23-24 DROP 2 (chase, slow-mo apex 24.0); 25 escape (win 25.2); 26.0-27.2 FINAL BELL held; 27.2 NEW RANK; 28.0 logo slam; 28-29 tagline + chips; 30.0 COMING SOON; ring-out, fade last 1.2 s"
+    }
+  ],
+  "offsets": {
+    "open": 0,
+    "dodge": 0,
+    "chaos": 2,
+    "crew": 4,
+    "finale": 5
+  }
+}
