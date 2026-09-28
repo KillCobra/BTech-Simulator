@@ -1,0 +1,26 @@
+{
+  "name": "bunk-master-videos",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "music": "uv run --with numpy python audio/make_music.py",
+    "render": "remotion render src/index.ts Trailer out/trailer.mp4"
+  },
+  "dependencies": {
+    "@react-three/fiber": "9.2.0",
+    "@remotion/bundler": "4.0.529",
+    "@remotion/cli": "4.0.529",
+    "@remotion/renderer": "4.0.529",
+    "@remotion/three": "4.0.529",
+    "@types/three": "0.178.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.529",
+    "three": "0.178.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.0",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3"
+  }
+}

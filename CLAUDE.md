@@ -1,7 +1,7 @@
 # Bunk Master (Godot 4.4.1, GDScript)
 
 ## Branch, CI and releases
-- Work happens on the `bunk-master` branch of github.com/KillCobra/BTech-Simulator (remote `origin`). `main` gets
+- Work happens on the `bunk-master` branch of github.com/KillCobra/BunkMaster (remote `origin`). `main` gets
   Bunk Master through PRs from `bunk-master`; never merge `main`'s files into `bunk-master`. (main's old Unity
   prototype history was joined once, with `-s ours`, so those PRs work; the Unity project is on `unity-archive`.)
 - Every push to `bunk-master` runs `.github/workflows/checks.yml`: project import, all scripts compile, and a
