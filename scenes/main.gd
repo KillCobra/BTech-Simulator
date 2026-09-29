@@ -1294,6 +1294,7 @@ func _apply_local_info() -> void:
 
 ## Clears the UI and returns the content box of a fresh left-side panel with the logo.
 func _new_screen() -> VBoxContainer:
+	Sfx.set_music("menu")  # the title theme plays on every menu screen; the world swaps it out
 	_clear_ui()
 	_ui = Control.new()
 	_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

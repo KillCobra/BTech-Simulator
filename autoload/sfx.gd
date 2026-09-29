@@ -343,6 +343,7 @@ func _build_music() -> void:
 	var out := {}
 	out["chase"] = _wav(_make_chase(), true)
 	out["calm"] = _wav(_make_calm(), true)
+	out["menu"] = _wav(_make_menu(), true)
 	music_gen_time_ms = (Time.get_ticks_usec() - t0) / 1000.0
 	_music_result = out
 
@@ -396,6 +397,38 @@ func _make_calm() -> PackedFloat32Array:
 		_note(b, spb, n[0], n[1] * 0.95, n[2], 0.1, TRIANGLE, 1.6, 1.0, 5.0, 0.004)
 	for i in b.size():
 		b[i] *= 0.8
+	return b
+
+
+func _make_menu() -> PackedFloat32Array:
+	# Sneaky-but-friendly title theme: B minor, 104 BPM, 8 bars: Bm - G - D - A, twice.
+	var spb := 60.0 / 104.0
+	var b := _buf(32 * spb)
+	var roots := [47, 43, 50, 45]
+	var chords := [[0, 3, 7], [0, 4, 7], [0, 4, 7], [0, 4, 7]]
+	var tops := [[66, 69, 74, 71], [67, 71, 74, 79], [66, 69, 74, 78], [64, 69, 73, 76]]
+	for bar in 8:
+		var k := bar % 4
+		var root: int = roots[k]
+		_note(b, spb, bar * 4, 3.8, root - 12, 0.16, TRIANGLE, 0.5)  # long bass
+		for c in chords[k]:  # warm pad
+			_note(b, spb, bar * 4, 3.9, root + c, 0.035, TRIANGLE, 0.3, 0.5)
+		for e in 8:  # bouncy plucked bass on the off-beats
+			if e % 2 == 1:
+				_note(b, spb, bar * 4 + e * 0.5, 0.3, root + (7 if e % 4 == 3 else 0), 0.09, SQUARE, 7.0, 0.2)
+		for e in 8:  # tiptoe pluck arpeggio
+			var top: Array = tops[k]
+			_note(b, spb, bar * 4 + e * 0.5, 0.45, top[e % 4] + (12 if bar >= 4 and e == 6 else 0),
+				0.06, TRIANGLE, 5.0, 0.6)
+		for beat in 4:  # soft kick, finger-snap hats
+			var t := (bar * 4 + beat) * spb
+			if beat % 2 == 0:
+				_tone(b, t, 0.16, 120, 45, 0.3, SINE, 16.0)
+			else:
+				_noise(b, t, 0.08, 0.1, 0.5, 40.0)
+			_noise(b, t + spb * 0.5, 0.025, 0.04, 0.9, 100.0)
+	for i in b.size():
+		b[i] *= 0.85
 	return b
 
 
