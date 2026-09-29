@@ -7,6 +7,8 @@ import { DURATION as STEAM_DURATION } from "./steam/cues";
 import { DURATION as LAUNCH_DURATION } from "./launch/cues";
 import { DURATION } from "./film/cues";
 import { FONT, H, W } from "./film/tokens";
+import { Reel } from "./reel/Reel";
+import { FORMATS, FPS, SAMPLE, ReelSpec, durationFrames, sanitize } from "./reel/spec";
 
 // The game's pixel font (fonts/Jersey10-Regular.ttf, SIL OFL), loaded before the first frame.
 const fontHandle = typeof window !== "undefined" ? delayRender("font") : null;
@@ -25,6 +27,19 @@ type Props = { fps: number };
 
 export const Root: React.FC = () => (
   <>
+  <Composition
+    id="Reel"
+    component={Reel}
+    width={FORMATS["9:16"].width}
+    height={FORMATS["9:16"].height}
+    fps={FPS}
+    durationInFrames={durationFrames(SAMPLE)}
+    defaultProps={{ spec: SAMPLE } as { spec: ReelSpec }}
+    calculateMetadata={({ props }) => {
+      const spec = sanitize(props.spec);
+      return { width: FORMATS[spec.format].width, height: FORMATS[spec.format].height, durationInFrames: durationFrames(spec), props: { spec } };
+    }}
+  />
   <Composition
     id="Steam"
     component={Steam}

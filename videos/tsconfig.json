@@ -3,5 +3,5 @@
     "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "jsx": "react-jsx",
     "strict": true, "skipLibCheck": true, "noEmit": true, "resolveJsonModule": true
   },
-  "include": ["src", "scripts"]
+  "include": ["src", "scripts", "dashboard"]
 }

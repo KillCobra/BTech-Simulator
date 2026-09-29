@@ -1,0 +1,85 @@
+{
+  "title": "Bunk Master - Coming Soon Teaser",
+  "format": "9:16",
+  "theme": "dusk",
+  "music": "trailer",
+  "musicStartBar": 4,
+  "scenes": [
+    {
+      "id": "hook",
+      "kind": "words",
+      "beats": 4,
+      "items": [
+        "SNEAK",
+        "HIDE",
+        "RUN",
+        "ESCAPE"
+      ]
+    },
+    {
+      "id": "plan",
+      "kind": "plate",
+      "beats": 6,
+      "text": "Make a plan.",
+      "sub": "Up to 8 friends.",
+      "plate": "fp0"
+    },
+    {
+      "id": "oops",
+      "kind": "alert",
+      "beats": 4,
+      "text": "RUN!",
+      "sub": "Someone ruined it."
+    },
+    {
+      "id": "tools",
+      "kind": "icons",
+      "beats": 6,
+      "text": "Improvise.",
+      "items": [
+        "hall_pass",
+        "samosa",
+        "medical_note",
+        "canteen_key",
+        "library_book",
+        "detention_ticket"
+      ]
+    },
+    {
+      "id": "maps",
+      "kind": "plate",
+      "beats": 6,
+      "text": "Big maps. Many escape routes.",
+      "sub": "PROXIMITY VOICE",
+      "plate": "c_air1"
+    },
+    {
+      "id": "beat",
+      "kind": "words",
+      "beats": 4,
+      "items": [
+        "PLAN",
+        "RUINED",
+        "PANIC",
+        "ESCAPE"
+      ]
+    },
+    {
+      "id": "barely",
+      "kind": "title",
+      "beats": 4,
+      "text": "Barely\nget out.",
+      "sub": "Coming soon"
+    },
+    {
+      "id": "end",
+      "kind": "cta",
+      "beats": 8,
+      "text": "Sneak out of class. Don't get caught.",
+      "items": [
+        "Windows",
+        "Mac"
+      ]
+    }
+  ]
+}

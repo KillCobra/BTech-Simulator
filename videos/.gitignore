@@ -1,3 +1,4 @@
 node_modules/
 out/
 audio/soundfonts/*.sf2
+dashboard/.env

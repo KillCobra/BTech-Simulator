@@ -1,0 +1,77 @@
+{
+  "title": "Teacher Is Watching",
+  "format": "9:16",
+  "theme": "dusk",
+  "music": "trailer",
+  "musicStartBar": 4,
+  "scenes": [
+    {
+      "id": "hook",
+      "kind": "plate",
+      "beats": 4,
+      "text": "Teacher is watching.",
+      "sub": "Don't move.",
+      "plate": "class0"
+    },
+    {
+      "id": "hush",
+      "kind": "words",
+      "beats": 4,
+      "items": [
+        "SHH",
+        "DON'T",
+        "MOVE",
+        "BLINK"
+      ]
+    },
+    {
+      "id": "oops",
+      "kind": "alert",
+      "beats": 4,
+      "text": "RUN!",
+      "sub": "Your friend ruined it."
+    },
+    {
+      "id": "tools",
+      "kind": "icons",
+      "beats": 4,
+      "text": "Improvise.",
+      "items": [
+        "hall_pass",
+        "samosa",
+        "medical_note",
+        "canteen_key"
+      ]
+    },
+    {
+      "id": "sneak",
+      "kind": "plate",
+      "beats": 4,
+      "text": "Panic. Sneak. Repeat.",
+      "sub": "PROXIMITY VOICE",
+      "plate": "fp0"
+    },
+    {
+      "id": "beats",
+      "kind": "words",
+      "beats": 4,
+      "items": [
+        "PLAN",
+        "RUINED",
+        "PANIC",
+        "ESCAPE"
+      ]
+    },
+    {
+      "id": "end",
+      "kind": "cta",
+      "beats": 8,
+      "text": "Sneak out of class. Don't get caught.",
+      "items": [
+        "Windows",
+        "Mac",
+        "Coming soon"
+      ]
+    }
+  ]
+}

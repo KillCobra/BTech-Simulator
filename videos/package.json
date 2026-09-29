@@ -4,12 +4,14 @@
   "scripts": {
     "studio": "remotion studio src/index.ts",
     "music": "uv run --with numpy python audio/make_music.py",
-    "render": "remotion render src/index.ts Trailer out/trailer.mp4"
+    "render": "remotion render src/index.ts Trailer out/trailer.mp4",
+    "dashboard": "tsx dashboard/server.mts"
   },
   "dependencies": {
     "@react-three/fiber": "9.2.0",
     "@remotion/bundler": "4.0.529",
     "@remotion/cli": "4.0.529",
+    "@remotion/player": "4.0.529",
     "@remotion/renderer": "4.0.529",
     "@remotion/three": "4.0.529",
     "@types/three": "0.178.0",
@@ -19,8 +21,12 @@
     "three": "0.178.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.4",
     "@types/react": "19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.7.0",
     "tsx": "4.19.4",
-    "typescript": "5.8.3"
+    "typescript": "5.8.3",
+    "vite": "^6.4.3"
   }
 }

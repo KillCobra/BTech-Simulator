@@ -1,0 +1,52 @@
+{
+  "title": "New reel",
+  "format": "9:16",
+  "theme": "sunny",
+  "music": "trailer",
+  "musicStartBar": 0,
+  "scenes": [
+    {
+      "id": "a1",
+      "kind": "title",
+      "beats": 4,
+      "text": "SNEAK OUT\nOF CLASS",
+      "sub": "up to 8 players"
+    },
+    {
+      "id": "a2",
+      "kind": "plate",
+      "beats": 4,
+      "text": "Make a plan",
+      "sub": "CO-OP",
+      "plate": "fp0"
+    },
+    {
+      "id": "a3",
+      "kind": "alert",
+      "beats": 4,
+      "text": "RUN!",
+      "sub": "Someone ruined it"
+    },
+    {
+      "id": "a4",
+      "kind": "words",
+      "beats": 4,
+      "items": [
+        "PLAN",
+        "PANIC",
+        "IMPROVISE",
+        "ESCAPE"
+      ]
+    },
+    {
+      "id": "a5",
+      "kind": "cta",
+      "beats": 8,
+      "text": "Sneak out of class. Don't get caught.",
+      "items": [
+        "Windows",
+        "Mac"
+      ]
+    }
+  ]
+}
