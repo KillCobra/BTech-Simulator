@@ -1,7 +1,7 @@
 {
-  "title": "Bunk Master - Coming Soon Teaser",
+  "title": "Bunk Master: How To Bunk In 5 Steps",
   "format": "9:16",
-  "theme": "dusk",
+  "theme": "sunny",
   "bpm": 128,
   "music": "custom",
   "track": {
@@ -15,7 +15,7 @@
       2,
       6
     ],
-    "dropBar": 2,
+    "dropBar": 3,
     "fill": true,
     "riser": true,
     "drums": {
@@ -89,7 +89,7 @@
         1,
         0,
         2,
-        1
+        0
       ],
       "perc": [
         1,
@@ -132,18 +132,18 @@
       null,
       null,
       null,
-      7,
+      null,
+      null,
+      null,
+      null,
       null,
       9,
       null,
-      8,
+      11,
       null,
-      null,
+      10,
+      9,
       7,
-      null,
-      6,
-      null,
-      null,
       null
     ],
     "chords": "stab",
@@ -151,44 +151,91 @@
     "mix": {
       "drums": 0.9,
       "bass": 0.65,
-      "lead": 0.4,
+      "lead": 0.35,
       "chords": 0.5
     }
   },
-  "overlays": [],
-  "musicStartBar": 4,
+  "overlays": [
+    {
+      "id": "o1",
+      "text": "CO-OP",
+      "at": 5,
+      "beats": 3,
+      "x": 80,
+      "y": 16,
+      "size": 1,
+      "color": "gold",
+      "style": "sticker"
+    },
+    {
+      "id": "o2",
+      "text": "shhh...",
+      "at": 9,
+      "beats": 3,
+      "x": 22,
+      "y": 80,
+      "size": 1,
+      "color": "white",
+      "style": "caption"
+    },
+    {
+      "id": "o3",
+      "text": "It was Dave!",
+      "at": 24,
+      "beats": 3,
+      "x": 74,
+      "y": 82,
+      "size": 1,
+      "color": "red",
+      "style": "sticker"
+    }
+  ],
+  "musicStartBar": 0,
   "scenes": [
     {
       "id": "hook",
       "kind": "words",
       "beats": 4,
       "items": [
-        "SNEAK",
-        "HIDE",
-        "RUN",
-        "ESCAPE"
+        "HOW",
+        "TO",
+        "BUNK",
+        "CLASS"
       ]
     },
     {
       "id": "plan",
       "kind": "plate",
-      "beats": 6,
-      "text": "Make a plan.",
-      "sub": "Up to 8 friends.",
+      "beats": 4,
+      "text": "1. PLAN",
+      "sub": "Pick a route with friends",
+      "transition": "slide",
+      "plate": "c_air0"
+    },
+    {
+      "id": "sneak",
+      "kind": "plate",
+      "beats": 4,
+      "text": "2. SNEAK",
+      "sub": "Staff hear how LOUD you are",
+      "theme": "night",
+      "transition": "zoom",
       "plate": "fp0"
     },
     {
-      "id": "oops",
+      "id": "panic",
       "kind": "alert",
       "beats": 4,
-      "text": "RUN!",
-      "sub": "Someone ruined it."
+      "text": "3. PANIC!",
+      "sub": "Someone ruined the plan",
+      "theme": "alarm",
+      "transition": "flash"
     },
     {
-      "id": "tools",
+      "id": "improv",
       "kind": "icons",
-      "beats": 7,
-      "text": "Improvise.",
+      "beats": 8,
+      "text": "4. IMPROVISE",
       "items": [
         "hall_pass",
         "samosa",
@@ -196,39 +243,50 @@
         "canteen_key",
         "library_book",
         "detention_ticket"
-      ]
+      ],
+      "transition": "cut"
     },
     {
-      "id": "maps",
-      "kind": "plate",
-      "beats": 6,
-      "text": "Big maps. Many escape routes.",
-      "sub": "PROXIMITY VOICE",
-      "plate": "c_air1"
-    },
-    {
-      "id": "beat",
-      "kind": "words",
-      "beats": 4,
-      "items": [
-        "PLAN",
-        "RUINED",
-        "PANIC",
-        "ESCAPE"
-      ]
-    },
-    {
-      "id": "barely",
+      "id": "blame",
       "kind": "title",
       "beats": 4,
-      "text": "Barely\nget out.",
-      "sub": "Coming soon"
+      "text": "Blame\na friend.",
+      "sub": "Excuses also work",
+      "transition": "slide"
     },
     {
-      "id": "end",
+      "id": "escape",
+      "kind": "plate",
+      "beats": 4,
+      "text": "5. ESCAPE",
+      "sub": "Barely make it out",
+      "theme": "dusk",
+      "transition": "zoom",
+      "plate": "c_air4"
+    },
+    {
+      "id": "eight",
+      "kind": "stat",
+      "beats": 4,
+      "text": "UP TO 8",
+      "sub": "friends. One escape.",
+      "theme": "sunny",
+      "transition": "flash"
+    },
+    {
+      "id": "build",
+      "kind": "voxel",
+      "beats": 4,
+      "text": "BUNK MASTER",
+      "transition": "cut",
+      "variant": "hero"
+    },
+    {
+      "id": "cta",
       "kind": "cta",
       "beats": 8,
       "text": "Sneak out of class. Don't get caught.",
+      "transition": "flash",
       "items": [
         "Windows",
         "Mac"

@@ -18,13 +18,17 @@ npx tsx scripts/stills.ts out/review 450 900    # stills at 60 fps frames
 
 ## Reel Studio (dashboard)
 
-Web dashboard for making short ads without prompting: live preview, timeline editor, Opus storyboards, MP4 render.
+Web editor for short ads: live preview, timeline, overlays, an original-music synth, Claude storyboards, MP4 render.
 
 ```bash
-cp dashboard/.env.example dashboard/.env   # add ANTHROPIC_API_KEY (only needed for "Ask Claude")
-npm run dashboard                          # http://localhost:5174
+npm run dashboard        # http://localhost:5174
 ```
 
-- A reel is JSON in `reels/` (scenes measured in beats of the 128 BPM score); the model writes that JSON, never code.
+- **Claude**: "Subscription" runs your logged-in Claude Code (`claude -p`), no key needed; "API key" uses `ANTHROPIC_API_KEY`
+  (`cp dashboard/.env.example dashboard/.env`). Pick the model in the panel. Up to 6 different takes on one brief are made in
+  parallel, each optionally with its own music. Everything is kept: `reels/` (reels), `library/` (generation history, saved scenes, saved tracks).
+- **Timeline**: scene lengths are in beats of the reel's BPM. Drag to reorder, drag an edge to resize, overlay track for stickers/captions.
+- **Music** (tab): trailer score, or a custom pattern synth (`src/reel/synth.ts`): drum machine, bass and lead piano rolls, chords,
+  build/drop/riser, presets, Claude composing. The browser previews and the server renders the same samples.
 - Scene kinds live in `src/reel/Reel.tsx`, their fields in `src/reel/spec.ts` (add a kind in both, plus `KINDS`).
-- Renders land in `out/reels/` (git-ignored). Formats: 9:16, 1:1, 16:9 at 30 fps. `REEL_MODEL` overrides the model.
+- Renders land in `out/reels/` (git-ignored): 9:16, 1:1, 16:9 at 30 fps. Shortcuts: space play, arrows scenes, Delete, Cmd+Z.

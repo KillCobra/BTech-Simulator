@@ -34,10 +34,10 @@ export const Root: React.FC = () => (
     height={FORMATS["9:16"].height}
     fps={FPS}
     durationInFrames={durationFrames(SAMPLE)}
-    defaultProps={{ spec: SAMPLE } as { spec: ReelSpec }}
+    defaultProps={{ spec: SAMPLE } as { spec: ReelSpec; audioSrc?: string }}
     calculateMetadata={({ props }) => {
       const spec = sanitize(props.spec);
-      return { width: FORMATS[spec.format].width, height: FORMATS[spec.format].height, durationInFrames: durationFrames(spec), props: { spec } };
+      return { width: FORMATS[spec.format].width, height: FORMATS[spec.format].height, durationInFrames: durationFrames(spec), props: { ...props, spec } };
     }}
   />
   <Composition

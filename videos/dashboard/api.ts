@@ -1,4 +1,4 @@
-import type { ReelSpec, Scene } from "../src/reel/spec";
+import type { ReelSpec, Scene, Track } from "../src/reel/spec";
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, init && { ...init, headers: { "content-type": "application/json" } });
@@ -23,10 +23,18 @@ export const api = {
   load: (id: string) => call<ReelSpec>(`/api/reels/${id}`),
   save: (id: string, spec: ReelSpec) => call(`/api/reels/${id}`, body("PUT", spec)),
   remove: (id: string) => call(`/api/reels/${id}`, { method: "DELETE" }),
-  generate: (prompt: string, format: string, provider: string, model: string, current?: ReelSpec) => call<ReelSpec>("/api/generate", body("POST", { prompt, format, provider, model, current })),
+  generate: (prompt: string, format: string, provider: string, model: string, current?: ReelSpec, music: MusicMode = "trailer") => call<{ spec: ReelSpec; warning?: string }>("/api/generate", body("POST", { prompt, format, provider, model, current, music })),
+  generateBatch: (prompt: string, format: string, provider: string, model: string, count: number, music: MusicMode) =>
+    call<{ specs: ReelSpec[]; failed: number; warnings: string[] }>("/api/generate-batch", body("POST", { prompt, format, provider, model, count, music })),
+  generateMusic: (prompt: string, provider: string, model: string, spec: ReelSpec) => call<{ bpm: number; track: Track }>("/api/generate-music", body("POST", { prompt, provider, model, spec })),
+  tracks: () => call<LibTrack[]>("/api/library/tracks"),
+  saveTrack: (name: string, bpm: number, track: Track) => call<LibTrack[]>("/api/library/tracks", body("POST", { name, bpm, track })),
+  delTrack: (id: string) => call(`/api/library/tracks/${id}`, { method: "DELETE" }),
   render: (id: string, spec: ReelSpec) => call<Job>("/api/render", body("POST", { id, spec })),
   jobs: () => call<Job[]>("/api/jobs"),
   renders: () => call<RenderRow[]>("/api/renders"),
 };
 export type Generation = { id: string; at: number; prompt: string; model: string; provider: string; revise: boolean; spec: ReelSpec };
 export type LibScene = { id: string; name: string; scene: Scene };
+export type LibTrack = { id: string; name: string; bpm: number; track: Track };
+export type MusicMode = "trailer" | "compose" | "none";

@@ -2,7 +2,9 @@
   "title": "Teacher Is Watching",
   "format": "9:16",
   "theme": "dusk",
+  "bpm": 128,
   "music": "trailer",
+  "overlays": [],
   "musicStartBar": 4,
   "scenes": [
     {

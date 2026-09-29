@@ -2,7 +2,9 @@
   "title": "Sneak out with friends",
   "format": "9:16",
   "theme": "sunny",
+  "bpm": 128,
   "music": "trailer",
+  "overlays": [],
   "musicStartBar": 0,
   "scenes": [
     {

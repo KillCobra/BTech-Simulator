@@ -5,9 +5,10 @@ import { Cube, Voxels, voxelBounds } from "../film/voxel";
 import { hash, impulse, JELLY, lerp, outCubic, outExpo, POP, sp } from "../film/fx";
 import { slam } from "../film/fxui";
 import { C } from "../film/tokens";
-import { BEAT, FPS, ITEMS, ReelSpec, Scene, THEMES, sceneFrames } from "./spec";
+import { FPS, ITEMS, OVERLAY_COLORS, Overlay, ReelSpec, Scene, THEMES, beatOf, sceneFrames, timing } from "./spec";
+import vox from "../film/voxels.json";
 
-type Ctx = { t: number; d: number; w: number; h: number; s: number; th: (typeof THEMES)[keyof typeof THEMES] };
+type Ctx = { t: number; d: number; w: number; h: number; s: number; beat: number; th: (typeof THEMES)[keyof typeof THEMES] };
 const SLAM_COLORS = [C.gold, C.red, C.green, C.blue, C.purple, C.orange, C.pink];
 
 const Backdrop: React.FC<Ctx> = ({ t, w, h, s, th }) => {
@@ -58,29 +59,30 @@ const Sub: React.FC<{ t: number; at: number; s: number; children: React.ReactNod
 const lines = (text?: string) => (text ?? "").split(/\\n|\n/);
 
 const Title: React.FC<Ctx & { sc: Scene }> = (c) => {
-  const { t, w, h, s, sc, th } = c;
+  const { t, w, h, s, sc, th, beat } = c;
+  const tm = timing(sc);
   const ls = lines(sc.text);
   const longest = Math.max(...ls.map((l) => l.length), 4);
   const size = Math.min(230 * s, (w * 0.9) / (longest * 0.5));
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", gap: 30 * s, flexDirection: "column" }}>
       {ls.map((l, i) => {
-        const k = slam(t, 0.05 + i * 0.12, 2.6);
+        const k = slam(t, tm.lines![i] * beat, 2.6);
         return (
           <div key={i} style={{ transform: `scale(${k}) rotate(${(i % 2 ? 1 : -1) * 2 * (1 - Math.min(1, k))}deg)` }}>
             <Outlined size={size} color={i === ls.length - 1 && ls.length > 1 ? th.accent : C.gold}>{l}</Outlined>
           </div>
         );
       })}
-      {sc.sub && <div style={{ marginTop: 30 * s }}><Sub t={t} at={0.05 + ls.length * 0.12 + 0.1} s={s}>{sc.sub}</Sub></div>}
-      <Cubes t={t} at={0.05} x={w / 2} y={h / 2} w={w} h={h} s={s} seed={3} />
+      {sc.sub && <div style={{ marginTop: 30 * s }}><Sub t={t} at={tm.sub! * beat} s={s}>{sc.sub}</Sub></div>}
+      <Cubes t={t} at={0} x={w / 2} y={h / 2} w={w} h={h} s={s} seed={3} />
     </AbsoluteFill>
   );
 };
 
-const Words: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc }) => {
+const Words: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc, beat }) => {
   const words = sc.items?.length ? sc.items : ["..."];
-  const per = Math.max(1, Math.round(sc.beats / words.length)) * BEAT || BEAT;
+  const per = Math.max(1, Math.round(sc.beats / words.length)) * beat;
   const i = Math.min(words.length - 1, Math.floor(t / per));
   const lt = t - i * per;
   const word = words[i];
@@ -97,7 +99,8 @@ const Words: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc }) => {
   );
 };
 
-const Plate: React.FC<Ctx & { sc: Scene }> = ({ t, d, w, h, s, sc, th }) => {
+const Plate: React.FC<Ctx & { sc: Scene }> = ({ t, d, w, h, s, sc, th, beat }) => {
+  const tm = timing(sc);
   const portrait = h > w;
   const fw = portrait ? w * 0.9 : w * 0.82, fh = portrait ? h * 0.56 : h * 0.66;
   const enter = sp(t, 0, { stiffness: 260, damping: 22 });
@@ -110,13 +113,13 @@ const Plate: React.FC<Ctx & { sc: Scene }> = ({ t, d, w, h, s, sc, th }) => {
           <Img src={staticFile(`plates/${sc.plate ?? "fp0"}.jpg`)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${zoom}) translateX(${panX}%)` }} />
         </div>
         {sc.sub && (
-          <div style={{ position: "absolute", left: 24 * s, top: -26 * s, transform: `rotate(-3deg) scale(${sp(t, 0.25, JELLY)})` }}>
+          <div style={{ position: "absolute", left: 24 * s, top: -26 * s, transform: `rotate(-3deg) scale(${sp(t, tm.sticker! * beat, JELLY)})` }}>
             <Chip color={th.accent} text={C.ink} k={s * 1.6} size={26}>{sc.sub}</Chip>
           </div>
         )}
       </div>
       {sc.text && (
-        <div style={{ position: portrait ? "relative" : "absolute", marginTop: portrait ? 60 * s : 0, bottom: portrait ? undefined : 50 * s, transform: `scale(${slam(t, 0.3, 2, 0.25)})`, textAlign: "center", padding: `0 ${40 * s}px` }}>
+        <div style={{ position: portrait ? "relative" : "absolute", marginTop: portrait ? 60 * s : 0, bottom: portrait ? undefined : 50 * s, transform: `scale(${slam(t, tm.caption! * beat + 0.05, 2, 0.25)})`, textAlign: "center", padding: `0 ${40 * s}px` }}>
           <Outlined size={(portrait ? 100 : 84) * s} color="#fff" style={{ whiteSpace: "normal", lineHeight: 1.05 }}>{sc.text}</Outlined>
         </div>
       )}
@@ -124,7 +127,11 @@ const Plate: React.FC<Ctx & { sc: Scene }> = ({ t, d, w, h, s, sc, th }) => {
   );
 };
 
-const Voxel: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc }) => {
+const VOX_MAX: Record<string, number> = {};
+const voxMax = (v: "hero" | "icon") => (VOX_MAX[v] ??= Math.max(...(vox[v] as number[][]).map((c) => c[0] + c[1] + c[2] * 2)));
+
+const Voxel: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc, beat }) => {
+  const tm = timing(sc);
   const variant = sc.variant ?? "hero";
   const b1 = voxelBounds(variant, 1);
   const a = Math.min((w * 0.92) / b1.w, (h * 0.58) / b1.h);
@@ -134,7 +141,8 @@ const Voxel: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc }) => {
         <Voxels
           scene={variant} a={a} width={w} height={h * 0.62}
           anim={(x, y, z, i) => {
-            const at = 0.05 + (x + y) * 0.012 + z * 0.02 + (i % 7) * 0.004;
+            // the last block lands on beat `built`, the first on beat 0
+            const at = ((x + y + z * 2) / voxMax(variant)) * tm.built! * beat * 0.85 + (i % 7) * 0.004;
             const k = sp(t, at, { stiffness: 300, damping: 18 });
             if (k <= 0.001) return null;
             return { dy: (1 - k) * -h * 0.3, s: Math.min(1.15, 0.3 + k * 0.7), o: Math.min(1, k * 3) };
@@ -148,12 +156,12 @@ const Voxel: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc }) => {
   );
 };
 
-const Icons: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc }) => {
+const Icons: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc, beat }) => {
   const items = (sc.items ?? []).filter((x) => x in ITEMS);
   const portrait = h > w;
   const cols = portrait ? Math.min(2, items.length || 1) : Math.min(3, items.length || 1);
   const size = Math.min((w * 0.9) / cols / 1.15, 360 * s);
-  const per = (sc.beats * BEAT * 0.7) / Math.max(1, items.length);
+  const tm = timing(sc);
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 40 * s }}>
       <div style={{ transform: `scale(${slam(t, 0.05, 2, 0.28)})`, textAlign: "center", padding: `0 ${40 * s}px` }}>
@@ -161,8 +169,7 @@ const Icons: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc }) => {
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", width: w * 0.95, gap: 20 * s }}>
         {items.map((it, i) => {
-          const at = 0.25 + i * per;
-          const k = sp(t, at, JELLY);
+          const k = sp(t, (tm.items![sc.items!.indexOf(it)] ?? 1 + i) * beat, JELLY);
           return (
             <div key={it} style={{ width: size * 1.1, display: "flex", flexDirection: "column", alignItems: "center", transform: `scale(${k}) rotate(${(1 - Math.min(1, k)) * 25 + Math.sin(t * 2 + i) * 3}deg)`, opacity: k > 0 ? 1 : 0 }}>
               <ItemIcon name={it as any} size={size} style={{ filter: "drop-shadow(0 12px 10px rgba(0,0,0,0.3))" }} />
@@ -175,9 +182,10 @@ const Icons: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc }) => {
   );
 };
 
-const Alert: React.FC<Ctx & { sc: Scene }> = ({ t, d, w, h, s, sc }) => {
-  const blink = impulse(t % (BEAT * 2), 0, 0.12);
-  const kick = impulse(t % BEAT, 0, 0.09);
+const Alert: React.FC<Ctx & { sc: Scene }> = ({ t, d, w, h, s, sc, beat }) => {
+  const tm = timing(sc);
+  const blink = impulse(t % (beat * 2), 0, 0.12);
+  const kick = impulse(t % beat, 0, 0.09);
   const fill = outCubic(Math.min(1, t / (d * 0.8)));
   const size = Math.min(380 * s, (w * 0.9) / (Math.max(3, (sc.text ?? "RUN!").length) * 0.5));
   return (
@@ -193,12 +201,13 @@ const Alert: React.FC<Ctx & { sc: Scene }> = ({ t, d, w, h, s, sc }) => {
           </div>
         </Card>
       </div>
-      {sc.sub && <Sub t={t} at={0.4} s={s}>{sc.sub}</Sub>}
+      {sc.sub && <Sub t={t} at={tm.sub! * beat} s={s}>{sc.sub}</Sub>}
     </AbsoluteFill>
   );
 };
 
-const Cta: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc, th }) => {
+const Cta: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc, beat }) => {
+  const tm = timing(sc);
   const size = Math.min(230 * s, (w * 0.9) / 5.2);
   const chips = sc.items ?? [];
   return (
@@ -208,46 +217,92 @@ const Cta: React.FC<Ctx & { sc: Scene }> = ({ t, w, h, s, sc, th }) => {
         <Outlined size={size} style={{ marginTop: -size * 0.1 }}>MASTER</Outlined>
       </div>
       {sc.text && (
-        <div style={{ transform: `scale(${sp(t, 0.35, POP)})`, padding: `0 ${50 * s}px`, textAlign: "center" }}>
+        <div style={{ transform: `scale(${sp(t, tm.tagline! * beat, POP)})`, padding: `0 ${50 * s}px`, textAlign: "center" }}>
           <Outlined size={56 * s} color="#fff" strokeWidth={9 * s} style={{ whiteSpace: "normal", lineHeight: 1.1 }}>{sc.text}</Outlined>
         </div>
       )}
       <div style={{ display: "flex", gap: 24 * s }}>
         {chips.map((c, i) => (
-          <div key={i} style={{ transform: `scale(${sp(t, 0.55 + i * 0.1, JELLY)})` }}>
+          <div key={i} style={{ transform: `scale(${sp(t, tm.chips![i] * beat, JELLY)})` }}>
             <Chip color={C.ink} k={s * 2} size={24}>{c}</Chip>
           </div>
         ))}
       </div>
-      <div style={{ transform: `scale(${sp(t, 0.9, JELLY) * (1 + 0.04 * impulse(t % BEAT, 0, 0.1))})`, marginTop: 20 * s }}>
+      <div style={{ transform: `scale(${sp(t, tm.soon! * beat, JELLY) * (1 + 0.04 * impulse(t % beat, 0, 0.1))})`, marginTop: 20 * s }}>
         <Button color={C.orange} k={s * 2.2} size={34}>COMING SOON</Button>
       </div>
     </AbsoluteFill>
   );
 };
 
-const BY_KIND: Record<Scene["kind"], React.FC<Ctx & { sc: Scene }>> = { title: Title, words: Words, plate: Plate, voxel: Voxel, icons: Icons, alert: Alert, cta: Cta };
+const Stat: React.FC<Ctx & { sc: Scene }> = ({ t, w, s, sc, th, beat }) => {
+  const tm = timing(sc);
+  const text = sc.text ?? "";
+  const size = Math.min(520 * s, (w * 0.9) / (Math.max(1, text.length) * 0.5));
+  const k = slam(t, 0.05, 3, 0.3);
+  return (
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 20 * s }}>
+      <div style={{ transform: `scale(${k * (1 + 0.04 * impulse(t % beat, 0, 0.1))})` }}>
+        <Outlined size={size} color={th.accent}>{text}</Outlined>
+      </div>
+      {sc.sub && <div style={{ transform: `scale(${sp(t, tm.label! * beat, POP)})` }}><Outlined size={110 * s} color="#fff" strokeWidth={14 * s}>{sc.sub}</Outlined></div>}
+    </AbsoluteFill>
+  );
+};
+
+const BY_KIND: Record<Scene["kind"], React.FC<Ctx & { sc: Scene }>> = { title: Title, words: Words, plate: Plate, voxel: Voxel, icons: Icons, alert: Alert, cta: Cta, stat: Stat };
 
 const SceneView: React.FC<{ sc: Scene; spec: ReelSpec; frames: number }> = ({ sc, spec, frames }) => {
   const frame = useCurrentFrame();
   const { width: w, height: h } = useVideoConfig();
   const t = frame / FPS;
-  const ctx: Ctx = { t, d: frames / FPS, w, h, s: Math.min(w, h) / 1080, th: THEMES[spec.theme] };
+  const beat = beatOf(spec);
+  const ctx: Ctx = { t, d: frames / FPS, w, h, s: Math.min(w, h) / 1080, beat, th: THEMES[sc.theme ?? spec.theme] };
   const Body = BY_KIND[sc.kind];
-  const bump = 1 + 0.012 * impulse(t % BEAT, 0, 0.08);
+  const bump = 1 + 0.012 * impulse(t % beat, 0, 0.08);
+  const tr = sc.transition ?? "flash";
+  const u = Math.min(1, t / 0.22);
+  const enter =
+    tr === "slide" ? { translate: `${(1 - outExpo(u)) * w}px 0` }
+    : tr === "zoom" ? { scale: `${1 + (1 - outExpo(u)) * 0.5}`, opacity: Math.min(1, u * 4) }
+    : {};
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Backdrop {...ctx} />
       <AbsoluteFill style={{ transform: `scale(${bump})` }}>
-        <Body {...ctx} sc={sc} />
+        <AbsoluteFill style={enter}>
+          <Body {...ctx} sc={sc} />
+        </AbsoluteFill>
       </AbsoluteFill>
-      {sc.flash !== false && t < 0.2 && <AbsoluteFill style={{ background: "#fff", opacity: 0.85 * (1 - t / 0.2) }} />}
+      {tr === "flash" && t < 0.2 && <AbsoluteFill style={{ background: "#fff", opacity: 0.85 * (1 - t / 0.2) }} />}
     </AbsoluteFill>
   );
 };
 
-export const Reel: React.FC<{ spec: ReelSpec }> = ({ spec }) => {
+const OverlayView: React.FC<{ o: Overlay; beat: number }> = ({ o, beat }) => {
+  const frame = useCurrentFrame();
+  const { width: w, height: h } = useVideoConfig();
+  const t = frame / FPS - o.at * beat;
+  const dur = o.beats * beat;
+  if (t < 0 || t > dur) return null;
+  const s = (Math.min(w, h) / 1080) * o.size;
+  const k = sp(t, 0, JELLY);
+  const out = Math.min(1, (dur - t) / 0.15);
+  const col = OVERLAY_COLORS[o.color];
+  return (
+    <div style={{ position: "absolute", left: `${o.x}%`, top: `${o.y}%`, transform: `translate(-50%,-50%) scale(${k}) rotate(${o.style === "sticker" ? -4 : 0}deg)`, opacity: out, maxWidth: "94%", textAlign: "center" }}>
+      {o.style === "sticker" ? (
+        <div style={{ ...font, fontSize: 64 * s, color: o.color === "ink" || o.color === "gold" || o.color === "white" ? C.ink : "#fff", background: col, padding: `${14 * s}px ${30 * s}px`, borderRadius: 18 * s, borderBottom: `${8 * s}px solid rgba(0,0,0,0.3)`, whiteSpace: "normal" }}>{o.text}</div>
+      ) : (
+        <Outlined size={(o.style === "caption" ? 76 : 100) * s} color={col} style={{ whiteSpace: "normal", lineHeight: 1.05 }}>{o.text}</Outlined>
+      )}
+    </div>
+  );
+};
+
+export const Reel: React.FC<{ spec: ReelSpec; audioSrc?: string }> = ({ spec, audioSrc }) => {
   const frames = sceneFrames(spec);
+  const beat = beatOf(spec);
   return (
     <AbsoluteFill style={{ background: "#000" }}>
       {spec.scenes.map((sc, i) => (
@@ -255,9 +310,11 @@ export const Reel: React.FC<{ spec: ReelSpec }> = ({ spec }) => {
           <SceneView sc={sc} spec={spec} frames={frames[i].frames} />
         </Sequence>
       ))}
+      {spec.overlays.map((o) => <OverlayView key={o.id} o={o} beat={beat} />)}
       {spec.music === "trailer" && (
-        <Audio src={staticFile("audio/trailer.wav")} startFrom={Math.round(spec.musicStartBar * 4 * BEAT * FPS)} volume={0.9} />
+        <Audio src={staticFile("audio/trailer.wav")} startFrom={Math.round(spec.musicStartBar * 4 * beat * FPS)} volume={0.9} />
       )}
+      {spec.music === "custom" && audioSrc && <Audio src={audioSrc} volume={0.95} />}
     </AbsoluteFill>
   );
 };

@@ -1,5 +1,1653 @@
 [
   {
+    "id": "mumte73kx4w",
+    "at": 1790694707312,
+    "prompt": "Coming soon teaser, 20s, hype. Music like the trailer score: bright chip-pop, 128 BPM D minor, sneaky intro then a big four-on-the-floor drop.",
+    "model": "claude-sonnet-5-5",
+    "provider": "subscription",
+    "revise": false,
+    "spec": {
+      "title": "Bunk Master - Coming Soon Teaser",
+      "format": "9:16",
+      "theme": "sunny",
+      "bpm": 128,
+      "music": "custom",
+      "track": {
+        "key": 2,
+        "scale": "minor",
+        "kit": "punch",
+        "swing": 0,
+        "prog": [
+          0,
+          5,
+          2,
+          6
+        ],
+        "dropBar": 3,
+        "fill": true,
+        "riser": true,
+        "drums": {
+          "kick": [
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "snare": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "clap": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "hat": [
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            1
+          ],
+          "perc": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        },
+        "bass": [
+          0,
+          null,
+          0,
+          null,
+          0,
+          null,
+          0,
+          null,
+          0,
+          null,
+          0,
+          null,
+          0,
+          null,
+          0,
+          null
+        ],
+        "lead": [
+          null,
+          null,
+          null,
+          9,
+          11,
+          null,
+          10,
+          null,
+          9,
+          null,
+          8,
+          9,
+          7,
+          null,
+          null,
+          null
+        ],
+        "chords": "stab",
+        "syncCuts": true,
+        "mix": {
+          "drums": 0.9,
+          "bass": 0.65,
+          "lead": 0.4,
+          "chords": 0.5
+        }
+      },
+      "overlays": [
+        {
+          "id": "shh",
+          "text": "Shhh...",
+          "at": 1,
+          "beats": 3,
+          "x": 78,
+          "y": 18,
+          "size": 1,
+          "color": "white",
+          "style": "caption"
+        },
+        {
+          "id": "exc",
+          "text": "Excuses!",
+          "at": 17,
+          "beats": 3,
+          "x": 22,
+          "y": 24,
+          "size": 1.2,
+          "color": "gold",
+          "style": "sticker"
+        },
+        {
+          "id": "loud",
+          "text": "Staff hear how LOUD you are",
+          "at": 29,
+          "beats": 3,
+          "x": 50,
+          "y": 86,
+          "size": 0.9,
+          "color": "white",
+          "style": "caption"
+        }
+      ],
+      "musicStartBar": 0,
+      "scenes": [
+        {
+          "id": "hook",
+          "kind": "title",
+          "beats": 4,
+          "text": "Psst.\nSneak out?",
+          "sub": "up to 8 players",
+          "theme": "night"
+        },
+        {
+          "id": "creep",
+          "kind": "plate",
+          "beats": 4,
+          "text": "Quiet. Very quiet.",
+          "sub": "Don't get caught",
+          "theme": "night",
+          "transition": "cut",
+          "plate": "fp0"
+        },
+        {
+          "id": "drop",
+          "kind": "words",
+          "beats": 4,
+          "items": [
+            "PLAN.",
+            "RUINED.",
+            "IMPROVISE.",
+            "PANIC."
+          ],
+          "transition": "flash"
+        },
+        {
+          "id": "run",
+          "kind": "alert",
+          "beats": 4,
+          "text": "RUN!",
+          "sub": "Staff heard that.",
+          "theme": "alarm",
+          "transition": "cut"
+        },
+        {
+          "id": "blame",
+          "kind": "plate",
+          "beats": 4,
+          "text": "Blame a friend.",
+          "sub": "Excuses ready",
+          "transition": "slide",
+          "plate": "class0"
+        },
+        {
+          "id": "loot",
+          "kind": "icons",
+          "beats": 4,
+          "text": "Grab your items",
+          "items": [
+            "hall_pass",
+            "samosa",
+            "medical_note"
+          ],
+          "transition": "zoom"
+        },
+        {
+          "id": "eight",
+          "kind": "stat",
+          "beats": 4,
+          "text": "8",
+          "sub": "friends. One escape.",
+          "transition": "flash"
+        },
+        {
+          "id": "map",
+          "kind": "plate",
+          "beats": 4,
+          "text": "Big maps. Many routes.",
+          "sub": "PROXIMITY VOICE",
+          "theme": "dusk",
+          "transition": "slide",
+          "plate": "c_air0"
+        },
+        {
+          "id": "build",
+          "kind": "voxel",
+          "beats": 4,
+          "text": "Your school. Your escape.",
+          "transition": "zoom",
+          "variant": "hero"
+        },
+        {
+          "id": "end",
+          "kind": "cta",
+          "beats": 8,
+          "text": "Sneak out of class. Don't get caught.",
+          "transition": "flash",
+          "items": [
+            "Windows",
+            "Mac"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "mumsepcnmo2",
+    "at": 1790693051351,
+    "prompt": "eye cathing and engaging reel introducing the game",
+    "model": "claude-sonnet-5-5",
+    "provider": "subscription",
+    "revise": false,
+    "spec": {
+      "title": "Bunk Master: How To Bunk In 5 Steps",
+      "format": "9:16",
+      "theme": "sunny",
+      "bpm": 128,
+      "music": "custom",
+      "track": {
+        "key": 9,
+        "scale": "minor",
+        "kit": "punch",
+        "swing": 0,
+        "prog": [
+          0,
+          5,
+          3,
+          6
+        ],
+        "dropBar": 3,
+        "fill": true,
+        "riser": true,
+        "drums": {
+          "kick": [
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          "snare": [
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            1
+          ],
+          "clap": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "hat": [
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            1
+          ],
+          "perc": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0
+          ]
+        },
+        "bass": [
+          0,
+          null,
+          null,
+          0,
+          null,
+          0,
+          null,
+          null,
+          0,
+          null,
+          null,
+          0,
+          null,
+          0,
+          -2,
+          null
+        ],
+        "lead": [
+          null,
+          null,
+          null,
+          null,
+          4,
+          null,
+          null,
+          2,
+          null,
+          null,
+          null,
+          null,
+          5,
+          null,
+          4,
+          null
+        ],
+        "chords": "pad",
+        "syncCuts": true,
+        "mix": {
+          "drums": 0.9,
+          "bass": 0.8,
+          "lead": 0.5,
+          "chords": 0.6
+        }
+      },
+      "overlays": [
+        {
+          "id": "o1",
+          "text": "CO-OP",
+          "at": 5,
+          "beats": 3,
+          "x": 80,
+          "y": 16,
+          "size": 1,
+          "color": "gold",
+          "style": "sticker"
+        },
+        {
+          "id": "o2",
+          "text": "shhh...",
+          "at": 9,
+          "beats": 3,
+          "x": 22,
+          "y": 80,
+          "size": 1,
+          "color": "white",
+          "style": "caption"
+        },
+        {
+          "id": "o3",
+          "text": "It was Dave!",
+          "at": 24,
+          "beats": 3,
+          "x": 74,
+          "y": 82,
+          "size": 1,
+          "color": "red",
+          "style": "sticker"
+        }
+      ],
+      "musicStartBar": 0,
+      "scenes": [
+        {
+          "id": "hook",
+          "kind": "words",
+          "beats": 4,
+          "items": [
+            "HOW",
+            "TO",
+            "BUNK",
+            "CLASS"
+          ]
+        },
+        {
+          "id": "plan",
+          "kind": "plate",
+          "beats": 4,
+          "text": "1. PLAN",
+          "sub": "Pick a route with friends",
+          "transition": "slide",
+          "plate": "c_air0"
+        },
+        {
+          "id": "sneak",
+          "kind": "plate",
+          "beats": 4,
+          "text": "2. SNEAK",
+          "sub": "Staff hear how LOUD you are",
+          "theme": "night",
+          "transition": "zoom",
+          "plate": "fp0"
+        },
+        {
+          "id": "panic",
+          "kind": "alert",
+          "beats": 4,
+          "text": "3. PANIC!",
+          "sub": "Someone ruined the plan",
+          "theme": "alarm",
+          "transition": "flash"
+        },
+        {
+          "id": "improv",
+          "kind": "icons",
+          "beats": 8,
+          "text": "4. IMPROVISE",
+          "items": [
+            "hall_pass",
+            "samosa",
+            "medical_note",
+            "canteen_key",
+            "library_book",
+            "detention_ticket"
+          ],
+          "transition": "cut"
+        },
+        {
+          "id": "blame",
+          "kind": "title",
+          "beats": 4,
+          "text": "Blame\na friend.",
+          "sub": "Excuses also work",
+          "transition": "slide"
+        },
+        {
+          "id": "escape",
+          "kind": "plate",
+          "beats": 4,
+          "text": "5. ESCAPE",
+          "sub": "Barely make it out",
+          "theme": "dusk",
+          "transition": "zoom",
+          "plate": "c_air4"
+        },
+        {
+          "id": "eight",
+          "kind": "stat",
+          "beats": 4,
+          "text": "UP TO 8",
+          "sub": "friends. One escape.",
+          "theme": "sunny",
+          "transition": "flash"
+        },
+        {
+          "id": "build",
+          "kind": "voxel",
+          "beats": 4,
+          "text": "BUNK MASTER",
+          "transition": "cut",
+          "variant": "hero"
+        },
+        {
+          "id": "cta",
+          "kind": "cta",
+          "beats": 8,
+          "text": "Sneak out of class. Don't get caught.",
+          "transition": "flash",
+          "items": [
+            "Windows",
+            "Mac"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "mumsembch3g",
+    "at": 1790693047416,
+    "prompt": "eye cathing and engaging reel introducing the game",
+    "model": "claude-sonnet-5-5",
+    "provider": "subscription",
+    "revise": false,
+    "spec": {
+      "title": "Bunk Master: Hook Reel",
+      "format": "9:16",
+      "theme": "sunny",
+      "bpm": 128,
+      "music": "custom",
+      "track": {
+        "key": 9,
+        "scale": "minor",
+        "kit": "hard",
+        "swing": 0.05,
+        "prog": [
+          0,
+          5,
+          3,
+          6
+        ],
+        "dropBar": 4,
+        "fill": true,
+        "riser": true,
+        "drums": {
+          "kick": [
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          "snare": [
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            1
+          ],
+          "clap": [
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0
+          ],
+          "hat": [
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            1
+          ],
+          "perc": [
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0
+          ]
+        },
+        "bass": [
+          0,
+          null,
+          0,
+          0,
+          null,
+          0,
+          null,
+          0,
+          0,
+          null,
+          0,
+          0,
+          null,
+          0,
+          null,
+          2
+        ],
+        "lead": [
+          null,
+          null,
+          null,
+          null,
+          4,
+          null,
+          null,
+          2,
+          null,
+          null,
+          null,
+          null,
+          7,
+          null,
+          5,
+          null
+        ],
+        "chords": "stab",
+        "syncCuts": true,
+        "mix": {
+          "drums": 0.9,
+          "bass": 0.85,
+          "lead": 0.55,
+          "chords": 0.5
+        }
+      },
+      "overlays": [
+        {
+          "id": "o_voice",
+          "text": "Proximity voice!",
+          "at": 20,
+          "beats": 4,
+          "x": 50,
+          "y": 16,
+          "size": 1.1,
+          "color": "gold",
+          "style": "sticker"
+        },
+        {
+          "id": "o_blame",
+          "text": "Blame a friend!",
+          "at": 26,
+          "beats": 5,
+          "x": 50,
+          "y": 82,
+          "size": 1.2,
+          "color": "red",
+          "style": "sticker"
+        },
+        {
+          "id": "o_quiz",
+          "text": "Surprise tests!",
+          "at": 38,
+          "beats": 2,
+          "x": 50,
+          "y": 15,
+          "size": 0.9,
+          "color": "blue",
+          "style": "caption"
+        }
+      ],
+      "musicStartBar": 0,
+      "scenes": [
+        {
+          "id": "hook",
+          "kind": "title",
+          "beats": 4,
+          "text": "SKIP CLASS?\nWITH 7 FRIENDS?",
+          "sub": "Don't get caught.",
+          "theme": "night",
+          "transition": "cut"
+        },
+        {
+          "id": "rhythm",
+          "kind": "words",
+          "beats": 4,
+          "items": [
+            "PLAN",
+            "SNEAK",
+            "RUINED",
+            "IMPROVISE"
+          ],
+          "transition": "cut"
+        },
+        {
+          "id": "sneak",
+          "kind": "plate",
+          "beats": 8,
+          "text": "Sneak past the staff",
+          "sub": "Co-op for up to 8",
+          "transition": "slide",
+          "plate": "fp0"
+        },
+        {
+          "id": "run",
+          "kind": "alert",
+          "beats": 4,
+          "text": "RUN!",
+          "sub": "Staff heard you.",
+          "theme": "alarm",
+          "transition": "flash"
+        },
+        {
+          "id": "loud",
+          "kind": "plate",
+          "beats": 4,
+          "text": "They hear how LOUD you are",
+          "sub": "Never what you say",
+          "transition": "cut",
+          "plate": "class0"
+        },
+        {
+          "id": "items",
+          "kind": "icons",
+          "beats": 8,
+          "text": "Bluff. Grab. Blame.",
+          "items": [
+            "hall_pass",
+            "samosa",
+            "medical_note",
+            "canteen_key"
+          ],
+          "transition": "zoom"
+        },
+        {
+          "id": "eight",
+          "kind": "stat",
+          "beats": 4,
+          "text": "8",
+          "sub": "friends. One escape.",
+          "transition": "flash"
+        },
+        {
+          "id": "maps",
+          "kind": "plate",
+          "beats": 4,
+          "text": "Big maps. Many escape routes.",
+          "sub": "PROXIMITY VOICE",
+          "transition": "slide",
+          "plate": "c_air0"
+        },
+        {
+          "id": "end",
+          "kind": "cta",
+          "beats": 8,
+          "text": "Sneak out of class. Don't get caught.",
+          "transition": "flash",
+          "items": [
+            "Windows",
+            "Mac"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "mumrdoufrlr",
+    "at": 1790691324423,
+    "prompt": "15s teaser about proximity voice",
+    "model": "claude-haiku-4-5-20251001",
+    "provider": "subscription",
+    "revise": false,
+    "spec": {
+      "title": "Proximity Voice Teaser",
+      "format": "9:16",
+      "theme": "sunny",
+      "bpm": 128,
+      "music": "custom",
+      "track": {
+        "key": 9,
+        "scale": "minor",
+        "kit": "punch",
+        "swing": 0.1,
+        "prog": [
+          0,
+          0,
+          0,
+          5,
+          5,
+          0,
+          0
+        ],
+        "dropBar": 2,
+        "fill": true,
+        "riser": true,
+        "drums": {
+          "kick": [
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "snare": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "clap": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          "hat": [
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0
+          ],
+          "perc": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "bass": [
+          0,
+          null,
+          null,
+          null,
+          0,
+          null,
+          null,
+          null,
+          5,
+          null,
+          null,
+          null,
+          0,
+          null,
+          null,
+          null
+        ],
+        "lead": [
+          null,
+          null,
+          6,
+          null,
+          null,
+          5,
+          null,
+          3,
+          null,
+          null,
+          2,
+          null,
+          0,
+          null,
+          null,
+          null
+        ],
+        "chords": "stab",
+        "syncCuts": true,
+        "mix": {
+          "drums": 0.85,
+          "bass": 0.7,
+          "lead": 0.5,
+          "chords": 0.65
+        }
+      },
+      "overlays": [],
+      "musicStartBar": 0,
+      "scenes": [
+        {
+          "id": "hook_title",
+          "kind": "title",
+          "beats": 4,
+          "text": "THEY HEAR\nYOUR VOICE",
+          "sub": "up to 8 players",
+          "transition": "cut"
+        },
+        {
+          "id": "escalation_words",
+          "kind": "words",
+          "beats": 4,
+          "items": [
+            "whisper",
+            "talking",
+            "laughing",
+            "BUSTED"
+          ],
+          "transition": "cut"
+        },
+        {
+          "id": "caught_alert",
+          "kind": "alert",
+          "beats": 4,
+          "text": "TOO LOUD!",
+          "sub": "The teacher saw you",
+          "theme": "alarm",
+          "transition": "flash"
+        },
+        {
+          "id": "mechanic_plate",
+          "kind": "plate",
+          "beats": 8,
+          "text": "Staff notice\nyour noise",
+          "sub": "They hear volume, not words",
+          "transition": "zoom",
+          "plate": "class0"
+        },
+        {
+          "id": "cta_final",
+          "kind": "cta",
+          "beats": 8,
+          "text": "Sneak out of class. Don't get caught.",
+          "items": [
+            "windows",
+            "mac"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "mumqnzw4s7j",
+    "at": 1790690125684,
+    "prompt": "hype 15s teaser",
+    "model": "claude-haiku-4-5-20251001",
+    "provider": "subscription",
+    "revise": false,
+    "spec": {
+      "title": "Bunk Master - Mystery Teaser",
+      "format": "9:16",
+      "theme": "night",
+      "bpm": 128,
+      "music": "custom",
+      "track": {
+        "key": 0,
+        "scale": "minor",
+        "kit": "hard",
+        "swing": 0,
+        "prog": [
+          0,
+          5,
+          3,
+          6
+        ],
+        "dropBar": 3,
+        "fill": true,
+        "riser": true,
+        "drums": {
+          "kick": [
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "snare": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          "clap": [
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            1,
+            1
+          ],
+          "hat": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "perc": [
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        "bass": [
+          0,
+          null,
+          0,
+          null,
+          5,
+          null,
+          5,
+          null,
+          3,
+          null,
+          3,
+          null,
+          6,
+          null,
+          6,
+          null
+        ],
+        "lead": [
+          0,
+          2,
+          5,
+          null,
+          0,
+          2,
+          5,
+          null,
+          3,
+          5,
+          8,
+          null,
+          3,
+          5,
+          8,
+          null
+        ],
+        "chords": "stab",
+        "mix": {
+          "drums": 0.85,
+          "bass": 0.7,
+          "lead": 0.6,
+          "chords": 0.5
+        }
+      },
+      "overlays": [],
+      "musicStartBar": 0,
+      "scenes": [
+        {
+          "id": "hook",
+          "kind": "title",
+          "beats": 4,
+          "text": "SNEAK",
+          "sub": "up to 8 players",
+          "theme": "night",
+          "transition": "flash"
+        },
+        {
+          "id": "creep",
+          "kind": "plate",
+          "beats": 4,
+          "text": "Staff hear how loud you are",
+          "sub": "PROXIMITY VOICE",
+          "theme": "night",
+          "transition": "cut",
+          "plate": "fp0"
+        },
+        {
+          "id": "caught",
+          "kind": "alert",
+          "beats": 4,
+          "text": "CAUGHT?",
+          "sub": "The teacher saw you",
+          "theme": "alarm",
+          "transition": "flash"
+        },
+        {
+          "id": "friends",
+          "kind": "voxel",
+          "beats": 4,
+          "text": "8 FRIENDS",
+          "theme": "night",
+          "transition": "zoom",
+          "variant": "icon"
+        },
+        {
+          "id": "chaos",
+          "kind": "words",
+          "beats": 4,
+          "items": [
+            "PLAN",
+            "CHAOS",
+            "RUN",
+            "NOW"
+          ],
+          "transition": "cut"
+        },
+        {
+          "id": "cta",
+          "kind": "cta",
+          "beats": 8,
+          "text": "Sneak out of class.\nDon't get caught.",
+          "items": [
+            "windows",
+            "mac"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "mumqndjx5ax",
+    "at": 1790690096733,
+    "prompt": "hype 15s teaser",
+    "model": "claude-haiku-4-5-20251001",
+    "provider": "subscription",
+    "revise": false,
+    "spec": {
+      "title": "Chaos & Blame",
+      "format": "9:16",
+      "theme": "sunny",
+      "bpm": 128,
+      "music": "custom",
+      "track": {
+        "key": 0,
+        "scale": "minor",
+        "kit": "8bit",
+        "swing": 0,
+        "prog": [
+          0,
+          5,
+          3,
+          6
+        ],
+        "dropBar": 0,
+        "fill": false,
+        "riser": false,
+        "drums": {
+          "kick": [
+            2,
+            0,
+            2,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            2,
+            0,
+            1,
+            0
+          ],
+          "snare": [
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            2,
+            0
+          ],
+          "clap": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "hat": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            2,
+            1,
+            2,
+            1,
+            2,
+            1,
+            2,
+            1
+          ],
+          "perc": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "bass": [
+          0,
+          null,
+          0,
+          null,
+          0,
+          null,
+          -2,
+          null,
+          5,
+          null,
+          5,
+          null,
+          3,
+          null,
+          3,
+          null
+        ],
+        "lead": [
+          0,
+          3,
+          5,
+          7,
+          0,
+          3,
+          5,
+          7,
+          5,
+          4,
+          3,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "chords": "stab",
+        "mix": {
+          "drums": 0.9,
+          "bass": 0.8,
+          "lead": 0.85,
+          "chords": 0.4
+        }
+      },
+      "overlays": [],
+      "musicStartBar": 0,
+      "scenes": [
+        {
+          "id": "s1_hook",
+          "kind": "title",
+          "beats": 3,
+          "text": "ONE FRIEND",
+          "sub": "Ruins everything"
+        },
+        {
+          "id": "s2_caught",
+          "kind": "alert",
+          "beats": 3,
+          "text": "CAUGHT",
+          "sub": "The teacher saw you"
+        },
+        {
+          "id": "s3_blame",
+          "kind": "words",
+          "beats": 4,
+          "items": [
+            "WHO?",
+            "YOU!",
+            "NO YOU",
+            "GO!"
+          ]
+        },
+        {
+          "id": "s4_chaos",
+          "kind": "plate",
+          "beats": 4,
+          "text": "IMPROVISE",
+          "sub": "Friends panic",
+          "plate": "fp0"
+        },
+        {
+          "id": "s5_stat",
+          "kind": "stat",
+          "beats": 4,
+          "text": "8",
+          "sub": "players. One shot."
+        },
+        {
+          "id": "s5b_school",
+          "kind": "voxel",
+          "beats": 4,
+          "text": "Big map.\nMultiple escapes.",
+          "variant": "hero"
+        },
+        {
+          "id": "s6_cta",
+          "kind": "cta",
+          "beats": 8,
+          "text": "Sneak out of class.\nDon't get caught.",
+          "items": [
+            "Windows",
+            "Mac"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "mumqdfyv",
+    "at": 1790689633303,
+    "prompt": "Proximity voice: staff hear how loud you are, never what you say",
+    "model": "claude-sonnet-5-5",
+    "provider": "subscription",
+    "revise": false,
+    "spec": {
+      "title": "Staff Hear Volume, Not Words",
+      "format": "9:16",
+      "theme": "night",
+      "music": "trailer",
+      "musicStartBar": 4,
+      "scenes": [
+        {
+          "id": "hook",
+          "kind": "words",
+          "beats": 4,
+          "items": [
+            "SHHH.",
+            "STAFF",
+            "HEAR",
+            "LOUDNESS"
+          ]
+        },
+        {
+          "id": "prox",
+          "kind": "title",
+          "beats": 6,
+          "text": "Proximity\nvoice",
+          "sub": "Talk with your crew"
+        },
+        {
+          "id": "plan",
+          "kind": "plate",
+          "beats": 6,
+          "text": "Whisper the plan",
+          "sub": "Friends hear you up close",
+          "plate": "class0"
+        },
+        {
+          "id": "rule",
+          "kind": "title",
+          "beats": 6,
+          "text": "They hear\nhow LOUD.",
+          "sub": "Never what you say."
+        },
+        {
+          "id": "busted",
+          "kind": "alert",
+          "beats": 6,
+          "text": "TOO LOUD!",
+          "sub": "Staff heard the noise"
+        },
+        {
+          "id": "sneak",
+          "kind": "plate",
+          "beats": 6,
+          "text": "Keep it down. Get out.",
+          "sub": "Up to 8 friends",
+          "plate": "fp0"
+        },
+        {
+          "id": "end",
+          "kind": "cta",
+          "beats": 8,
+          "text": "Sneak out of class. Don't get caught.",
+          "items": [
+            "Windows",
+            "Mac"
+          ]
+        }
+      ]
+    }
+  },
+  {
     "id": "mumq9wsc",
     "at": 1790689468476,
     "prompt": "15s hook: your teacher is watching, friends panic, escape",

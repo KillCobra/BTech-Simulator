@@ -1,0 +1,285 @@
+{
+  "title": "Bunk Master: Hook Reel",
+  "format": "9:16",
+  "theme": "sunny",
+  "bpm": 128,
+  "music": "custom",
+  "track": {
+    "key": 9,
+    "scale": "minor",
+    "kit": "hard",
+    "swing": 0.05,
+    "prog": [
+      0,
+      5,
+      3,
+      6
+    ],
+    "dropBar": 4,
+    "fill": true,
+    "riser": true,
+    "drums": {
+      "kick": [
+        2,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      "snare": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        1
+      ],
+      "clap": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0
+      ],
+      "hat": [
+        1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        1,
+        1
+      ],
+      "perc": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    "bass": [
+      0,
+      null,
+      0,
+      0,
+      null,
+      0,
+      null,
+      0,
+      0,
+      null,
+      0,
+      0,
+      null,
+      0,
+      null,
+      2
+    ],
+    "lead": [
+      null,
+      null,
+      null,
+      null,
+      4,
+      null,
+      null,
+      2,
+      null,
+      null,
+      null,
+      null,
+      7,
+      null,
+      5,
+      null
+    ],
+    "chords": "stab",
+    "syncCuts": true,
+    "mix": {
+      "drums": 0.9,
+      "bass": 0.85,
+      "lead": 0.55,
+      "chords": 0.5
+    }
+  },
+  "overlays": [
+    {
+      "id": "o_voice",
+      "text": "Proximity voice!",
+      "at": 20,
+      "beats": 4,
+      "x": 50,
+      "y": 16,
+      "size": 1.1,
+      "color": "gold",
+      "style": "sticker"
+    },
+    {
+      "id": "o_blame",
+      "text": "Blame a friend!",
+      "at": 26,
+      "beats": 5,
+      "x": 50,
+      "y": 82,
+      "size": 1.2,
+      "color": "red",
+      "style": "sticker"
+    },
+    {
+      "id": "o_quiz",
+      "text": "Surprise tests!",
+      "at": 38,
+      "beats": 2,
+      "x": 50,
+      "y": 15,
+      "size": 0.9,
+      "color": "blue",
+      "style": "caption"
+    }
+  ],
+  "musicStartBar": 0,
+  "scenes": [
+    {
+      "id": "hook",
+      "kind": "title",
+      "beats": 4,
+      "text": "SKIP CLASS?\nWITH 7 FRIENDS?",
+      "sub": "Don't get caught.",
+      "theme": "night",
+      "transition": "cut"
+    },
+    {
+      "id": "rhythm",
+      "kind": "words",
+      "beats": 4,
+      "items": [
+        "PLAN",
+        "SNEAK",
+        "RUINED",
+        "IMPROVISE"
+      ],
+      "transition": "cut"
+    },
+    {
+      "id": "sneak",
+      "kind": "plate",
+      "beats": 8,
+      "text": "Sneak past the staff",
+      "sub": "Co-op for up to 8",
+      "transition": "slide",
+      "plate": "fp0"
+    },
+    {
+      "id": "run",
+      "kind": "alert",
+      "beats": 4,
+      "text": "RUN!",
+      "sub": "Staff heard you.",
+      "theme": "alarm",
+      "transition": "flash"
+    },
+    {
+      "id": "loud",
+      "kind": "plate",
+      "beats": 4,
+      "text": "They hear how LOUD you are",
+      "sub": "Never what you say",
+      "transition": "cut",
+      "plate": "class0"
+    },
+    {
+      "id": "items",
+      "kind": "icons",
+      "beats": 8,
+      "text": "Bluff. Grab. Blame.",
+      "items": [
+        "hall_pass",
+        "samosa",
+        "medical_note",
+        "canteen_key"
+      ],
+      "transition": "zoom"
+    },
+    {
+      "id": "eight",
+      "kind": "stat",
+      "beats": 4,
+      "text": "8",
+      "sub": "friends. One escape.",
+      "transition": "flash"
+    },
+    {
+      "id": "maps",
+      "kind": "plate",
+      "beats": 4,
+      "text": "Big maps. Many escape routes.",
+      "sub": "PROXIMITY VOICE",
+      "transition": "slide",
+      "plate": "c_air0"
+    },
+    {
+      "id": "end",
+      "kind": "cta",
+      "beats": 8,
+      "text": "Sneak out of class. Don't get caught.",
+      "transition": "flash",
+      "items": [
+        "Windows",
+        "Mac"
+      ]
+    }
+  ]
+}

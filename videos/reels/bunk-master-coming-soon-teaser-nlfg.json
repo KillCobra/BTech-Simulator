@@ -1,7 +1,7 @@
 {
   "title": "Bunk Master - Coming Soon Teaser",
   "format": "9:16",
-  "theme": "dusk",
+  "theme": "sunny",
   "bpm": 128,
   "music": "custom",
   "track": {
@@ -15,7 +15,7 @@
       2,
       6
     ],
-    "dropBar": 2,
+    "dropBar": 3,
     "fill": true,
     "riser": true,
     "drums": {
@@ -132,16 +132,16 @@
       null,
       null,
       null,
-      7,
+      9,
+      11,
+      null,
+      10,
       null,
       9,
       null,
       8,
-      null,
-      null,
+      9,
       7,
-      null,
-      6,
       null,
       null,
       null
@@ -155,80 +155,135 @@
       "chords": 0.5
     }
   },
-  "overlays": [],
-  "musicStartBar": 4,
+  "overlays": [
+    {
+      "id": "shh",
+      "text": "Shhh...",
+      "at": 1,
+      "beats": 3,
+      "x": 78,
+      "y": 18,
+      "size": 1,
+      "color": "white",
+      "style": "caption"
+    },
+    {
+      "id": "exc",
+      "text": "Excuses!",
+      "at": 17,
+      "beats": 3,
+      "x": 22,
+      "y": 24,
+      "size": 1.2,
+      "color": "gold",
+      "style": "sticker"
+    },
+    {
+      "id": "loud",
+      "text": "Staff hear how LOUD you are",
+      "at": 29,
+      "beats": 3,
+      "x": 50,
+      "y": 86,
+      "size": 0.9,
+      "color": "white",
+      "style": "caption"
+    }
+  ],
+  "musicStartBar": 0,
   "scenes": [
     {
       "id": "hook",
-      "kind": "words",
+      "kind": "title",
       "beats": 4,
-      "items": [
-        "SNEAK",
-        "HIDE",
-        "RUN",
-        "ESCAPE"
-      ]
+      "text": "Psst.\nSneak out?",
+      "sub": "up to 8 players",
+      "theme": "night"
     },
     {
-      "id": "plan",
+      "id": "creep",
       "kind": "plate",
-      "beats": 6,
-      "text": "Make a plan.",
-      "sub": "Up to 8 friends.",
+      "beats": 4,
+      "text": "Quiet. Very quiet.",
+      "sub": "Don't get caught",
+      "theme": "night",
+      "transition": "cut",
       "plate": "fp0"
     },
     {
-      "id": "oops",
-      "kind": "alert",
-      "beats": 4,
-      "text": "RUN!",
-      "sub": "Someone ruined it."
-    },
-    {
-      "id": "tools",
-      "kind": "icons",
-      "beats": 7,
-      "text": "Improvise.",
-      "items": [
-        "hall_pass",
-        "samosa",
-        "medical_note",
-        "canteen_key",
-        "library_book",
-        "detention_ticket"
-      ]
-    },
-    {
-      "id": "maps",
-      "kind": "plate",
-      "beats": 6,
-      "text": "Big maps. Many escape routes.",
-      "sub": "PROXIMITY VOICE",
-      "plate": "c_air1"
-    },
-    {
-      "id": "beat",
+      "id": "drop",
       "kind": "words",
       "beats": 4,
       "items": [
-        "PLAN",
-        "RUINED",
-        "PANIC",
-        "ESCAPE"
-      ]
+        "PLAN.",
+        "RUINED.",
+        "IMPROVISE.",
+        "PANIC."
+      ],
+      "transition": "flash"
     },
     {
-      "id": "barely",
-      "kind": "title",
+      "id": "run",
+      "kind": "alert",
       "beats": 4,
-      "text": "Barely\nget out.",
-      "sub": "Coming soon"
+      "text": "RUN!",
+      "sub": "Staff heard that.",
+      "theme": "alarm",
+      "transition": "cut"
+    },
+    {
+      "id": "blame",
+      "kind": "plate",
+      "beats": 4,
+      "text": "Blame a friend.",
+      "sub": "Excuses ready",
+      "transition": "slide",
+      "plate": "class0"
+    },
+    {
+      "id": "loot",
+      "kind": "icons",
+      "beats": 4,
+      "text": "Grab your items",
+      "items": [
+        "hall_pass",
+        "samosa",
+        "medical_note"
+      ],
+      "transition": "zoom"
+    },
+    {
+      "id": "eight",
+      "kind": "stat",
+      "beats": 4,
+      "text": "8",
+      "sub": "friends. One escape.",
+      "transition": "flash"
+    },
+    {
+      "id": "map",
+      "kind": "plate",
+      "beats": 4,
+      "text": "Big maps. Many routes.",
+      "sub": "PROXIMITY VOICE",
+      "theme": "dusk",
+      "transition": "slide",
+      "plate": "c_air0"
+    },
+    {
+      "id": "build",
+      "kind": "voxel",
+      "beats": 4,
+      "text": "Your school. Your escape.",
+      "transition": "zoom",
+      "variant": "hero"
     },
     {
       "id": "end",
       "kind": "cta",
       "beats": 8,
       "text": "Sneak out of class. Don't get caught.",
+      "transition": "flash",
       "items": [
         "Windows",
         "Mac"

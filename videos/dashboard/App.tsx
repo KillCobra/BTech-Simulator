@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Player, PlayerRef } from "@remotion/player";
 import { Reel } from "../src/reel/Reel";
 import {
-  BEAT, DEFAULT_SCENE, FORMATS, FPS, ITEMS, KINDS, PLATES, SAMPLE, THEMES, durationFrames, durationSeconds, newId, sanitize, sceneFrames, totalBeats,
-  Format, ReelSpec, Scene, SceneKind, MAX_BEATS,
+  DEFAULT_OVERLAY, DEFAULT_SCENE, FORMATS, FPS, SAMPLE, THEMES, TRACK_PRESETS, beatOf, durationFrames, durationSeconds, maxBeats, minBeats, newId, sceneFrames, totalBeats,
+  Format, Overlay, ReelSpec, Scene, SceneKind,
 } from "../src/reel/spec";
-import { api, Generation, Job, LibScene, ReelRow, RenderRow } from "./api";
+import { api, Generation, Job, LibScene, LibTrack, MusicMode, ReelRow, RenderRow } from "./api";
+import { useTrackUrl } from "./audio";
+import { OverlayInspector, SceneInspector } from "./Inspector";
+import { MusicPanel } from "./MusicPanel";
+import { KIND_COLOR, Timeline } from "./Timeline";
 
-const KIND_COLOR: Record<SceneKind, string> = { title: "#ffc93c", words: "#b07cff", plate: "#9fd8ff", voxel: "#7fe0a0", icons: "#ff9a3c", alert: "#ff6b63", cta: "#ffd24a" };
 const IDEAS = [
   "15s hook: your teacher is watching, friends panic, escape",
   "Proximity voice: staff hear how loud you are, never what you say",
@@ -16,38 +19,45 @@ const IDEAS = [
   "Item trading: hall pass, samosa, medical note",
 ];
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "reel";
+const pref = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+const inField = (t: EventTarget | null) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
 
 export const App: React.FC = () => {
   const [reels, setReels] = useState<ReelRow[]>([]);
   const [id, setId] = useState<string | null>(null);
   const [spec, setSpecRaw] = useState<ReelSpec>(SAMPLE);
   const [sel, setSel] = useState(0);
+  const [selOv, setSelOv] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [variants, setVariants] = useState(1);
+  const [musicMode, setMusicMode] = useState<MusicMode>(pref("musicMode", "compose") as MusicMode);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
   const [err, setErr] = useState("");
   const [caps, setCaps] = useState({ hasKey: false, hasCli: false, models: [] as { id: string; label: string }[] });
-  const pref = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const [provider, setProvider] = useState(pref("provider", "subscription"));
   const [model, setModel] = useState(pref("model", "claude-opus-5-5"));
   const [gens, setGens] = useState<Generation[]>([]);
   const [lib, setLib] = useState<LibScene[]>([]);
-  useEffect(() => { try { localStorage.setItem("provider", provider); localStorage.setItem("model", model); } catch { /* private mode */ } }, [provider, model]);
-  const [tab, setTab] = useState<"scene" | "renders">("scene");
+  const [tracks, setTracks] = useState<LibTrack[]>([]);
+  const [tab, setTab] = useState<"scene" | "music" | "renders">("scene");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [renders, setRenders] = useState<RenderRow[]>([]);
   const player = useRef<PlayerRef>(null);
   const hist = useRef<{ stack: ReelSpec[]; at: number }>({ stack: [], at: 0 });
   const [, bump] = useState(0);
+  const audioSrc = useTrackUrl(spec);
 
+  useEffect(() => { try { localStorage.setItem("provider", provider); localStorage.setItem("model", model); localStorage.setItem("musicMode", musicMode); } catch { /* private mode */ } }, [provider, model, musicMode]);
   const refreshReels = useCallback(() => api.reels().then(setReels).catch(() => {}), []);
   const refreshRenders = useCallback(() => api.renders().then(setRenders).catch(() => {}), []);
 
-  // spec edits go through here so undo works; rapid typing collapses into one step
+  // every edit goes through here so undo works; rapid typing collapses into one step
   const setSpec = useCallback((next: ReelSpec | ((s: ReelSpec) => ReelSpec)) => {
     setSpecRaw((cur) => {
       const n = typeof next === "function" ? next(cur) : next;
       const h = hist.current;
-      if (Date.now() - h.at > 700) { h.stack.push(cur); if (h.stack.length > 60) h.stack.shift(); }
+      if (Date.now() - h.at > 700) { h.stack.push(cur); if (h.stack.length > 80) h.stack.shift(); }
       h.at = Date.now();
       bump((x) => x + 1);
       return n;
@@ -61,32 +71,36 @@ export const App: React.FC = () => {
   const openReel = useCallback(async (rid: string) => {
     const s = await api.load(rid);
     hist.current = { stack: [], at: 0 };
-    setId(rid); setSpecRaw(s); setSel(0); setErr("");
+    setId(rid); setSpecRaw(s); setSel(0); setSelOv(null); setErr("");
   }, []);
-  const newReel = (s: ReelSpec = SAMPLE) => {
+  /** Saves a spec as a new reel and returns its id (does not switch to it). */
+  const createReel = (s: ReelSpec) => {
     const rid = `${slug(s.title)}-${Math.random().toString(36).slice(2, 6)}`;
-    hist.current = { stack: [], at: 0 };
-    setId(rid); setSpecRaw(s); setSel(0);
-    api.save(rid, s).then(refreshReels);
+    api.save(rid, s);
     return rid;
+  };
+  const newReel = (s: ReelSpec = SAMPLE) => {
+    const rid = createReel(s);
+    hist.current = { stack: [], at: 0 };
+    setId(rid); setSpecRaw(s); setSel(0); setSelOv(null);
+    setTimeout(refreshReels, 300);
   };
 
   useEffect(() => {
     api.status().then((s) => { setCaps(s); if (!s.hasCli && s.hasKey) setProvider("api"); }).catch(() => {});
     api.generations().then(setGens).catch(() => {});
     api.scenes().then(setLib).catch(() => {});
+    api.tracks().then(setTracks).catch(() => {});
     refreshRenders();
-    api.reels().then((list) => { setReels(list); list.length ? openReel(list[0].id) : newReel(); }).catch((e) => setErr(String(e.message)));
+    api.reels().then((list) => { setReels(list); if (list.length) openReel(list[0].id); else newReel(); }).catch((e) => setErr(String(e.message)));
   }, []); // eslint-disable-line
 
-  // autosave
   useEffect(() => {
     if (!id) return;
     const t = setTimeout(() => api.save(id, spec).then(refreshReels).catch(() => {}), 500);
     return () => clearTimeout(t);
   }, [spec, id, refreshReels]);
 
-  // render jobs
   const active = jobs.some((j) => j.status === "bundling" || j.status === "rendering");
   useEffect(() => {
     if (!active) return;
@@ -94,31 +108,26 @@ export const App: React.FC = () => {
     return () => clearInterval(t);
   }, [active, refreshRenders]);
 
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) { e.preventDefault(); undo(); }
-    };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, []);
-
-  const canAsk = provider === "api" ? caps.hasKey : caps.hasCli;
   const frames = useMemo(() => sceneFrames(spec), [spec]);
   const fmt = FORMATS[spec.format];
+  const beat = beatOf(spec);
   const scene = spec.scenes[Math.min(sel, spec.scenes.length - 1)];
+  const ov = selOv ? spec.overlays.find((o) => o.id === selOv) : undefined;
+  const canAsk = provider === "api" ? caps.hasKey : caps.hasCli;
+  const limit = maxBeats(spec);
 
+  // ---- scenes
   const patch = (p: Partial<Scene>) => setSpec((s) => ({ ...s, scenes: s.scenes.map((x, i) => (i === sel ? { ...x, ...p } : x)) }));
   const select = (i: number) => {
-    setSel(i);
-    setTab("scene");
+    setSel(i); setSelOv(null); setTab((t) => (t === "renders" ? "scene" : t === "music" ? "scene" : t));
     player.current?.pause();
     player.current?.seekTo(frames[i].from + Math.min(frames[i].frames - 1, 12));
   };
   const addScene = (kind: SceneKind) => {
-    if (totalBeats(spec) + DEFAULT_SCENE[kind].beats > MAX_BEATS) return setErr(`Music is ${MAX_BEATS} beats long; shorten a scene first.`);
+    if (totalBeats(spec) + DEFAULT_SCENE[kind].beats > limit) return setErr(`This reel is at its ${limit}-beat limit. Shorten a scene first.`);
     const at = Math.min(sel + 1, spec.scenes.length);
     setSpec((s) => ({ ...s, scenes: [...s.scenes.slice(0, at), { ...DEFAULT_SCENE[kind], id: newId() }, ...s.scenes.slice(at)] }));
-    setSel(at); setErr("");
+    setSel(at); setSelOv(null); setErr("");
   };
   const move = (from: number, to: number) => {
     if (from === to || to < 0 || to >= spec.scenes.length) return;
@@ -131,34 +140,90 @@ export const App: React.FC = () => {
     setSpec((s) => ({ ...s, scenes: s.scenes.filter((_, i) => i !== sel) }));
     setSel((v) => Math.max(0, v - 1));
   };
-  const setBeats = (n: number) => {
-    const others = totalBeats(spec) - scene.beats;
-    patch({ beats: Math.max(1, Math.min(32, Math.min(n, MAX_BEATS - others))) });
+  const setBeatsAt = (i: number, n: number) =>
+    setSpec((s) => {
+      const others = totalBeats(s) - s.scenes[i].beats;
+      const b = Math.max(minBeats(s.scenes[i]), Math.min(32, Math.min(n, maxBeats(s) - others)));
+      return b === s.scenes[i].beats ? s : { ...s, scenes: s.scenes.map((x, k) => (k === i ? { ...x, beats: b } : x)) };
+    });
+
+  // ---- overlays
+  const patchOv = (oid: string, p: Partial<Overlay>) => setSpec((s) => ({ ...s, overlays: s.overlays.map((o) => (o.id === oid ? { ...o, ...p } : o)) }));
+  const addOverlay = () => {
+    const f = player.current?.getCurrentFrame() ?? 0;
+    const o: Overlay = { ...DEFAULT_OVERLAY, id: newId(), at: Math.min(Math.max(0, totalBeats(spec) - 1), Math.round(f / FPS / beat)) };
+    setSpec((s) => ({ ...s, overlays: [...s.overlays, o] }));
+    setSelOv(o.id); setTab("scene");
   };
 
+  // ---- music source
+  const setMusic = (m: ReelSpec["music"]) => {
+    setSpec((s) => {
+      if (m === "custom") { const p = TRACK_PRESETS.hype; return { ...s, music: m, bpm: s.track ? s.bpm : p.bpm, track: s.track ?? structuredClone(p.track) }; }
+      return { ...s, music: m, bpm: m === "trailer" ? 128 : s.bpm };
+    });
+    if (m === "custom") setTab("music");
+  };
+
+  // ---- generation
   const generate = async (revise: boolean) => {
     if (!prompt.trim()) return;
-    setBusy(true); setErr("");
+    setBusy(true); setErr(""); setNotice("");
     try {
-      const next = await api.generate(prompt, spec.format, provider, model, revise ? spec : undefined);
+      if (revise) {
+        const r = await api.generate(prompt, spec.format, provider, model, spec, musicMode);
+        setSpec(r.spec);
+        if (r.warning) setNotice(r.warning);
+      } else {
+        const { specs, failed, warnings } = await api.generateBatch(prompt, spec.format, provider, model, variants, musicMode);
+        const ids = specs.map(createReel);
+        await refreshReels();
+        await openReel(ids[0]);
+        const msg = [specs.length > 1 || failed ? `${specs.length} reels made${failed ? `, ${failed} failed` : ""}. They are saved in Reels below.` : "", ...warnings].filter(Boolean).join(" ");
+        if (msg) setNotice(msg);
+      }
       api.generations().then(setGens);
-      if (revise || !id) setSpec(next); else { newReel(next); }
-      setSel(0);
-      player.current?.seekTo(0);
+      setSel(0); player.current?.seekTo(0);
     } catch (e: any) { setErr(e.message); }
     setBusy(false);
   };
 
-  const render = async () => {
+  // ---- render / export
+  const render = async (formats: Format[] = [spec.format]) => {
     if (!id) return;
     setErr("");
     try {
       await api.save(id, spec);
-      const job = await api.render(id, spec);
-      setJobs((j) => [job, ...j]);
+      for (const f of formats) {
+        const job = await api.render(`${id}-${f.replace(":", "x")}`, { ...spec, format: f });
+        setJobs((j) => [job, ...j]);
+      }
       setTab("renders");
     } catch (e: any) { setErr(e.message); }
   };
+  const exportJson = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(spec, null, 2)], { type: "application/json" }));
+    a.download = `${slug(spec.title)}.json`;
+    a.click();
+  };
+  const duplicateReel = () => newReel({ ...structuredClone(spec), title: `${spec.title} copy` });
+
+  // ---- keyboard: space play/pause, arrows scenes, delete, undo
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (inField(e.target)) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
+      else if (e.key === " ") { e.preventDefault(); player.current?.toggle(); }
+      else if (e.key === "ArrowRight" && sel < spec.scenes.length - 1) select(sel + 1);
+      else if (e.key === "ArrowLeft" && sel > 0) select(sel - 1);
+      else if (e.key === "Delete" || e.key === "Backspace") {
+        if (selOv) { setSpec((s) => ({ ...s, overlays: s.overlays.filter((o) => o.id !== selOv) })); setSelOv(null); } else del();
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  });
 
   return (
     <div className="app">
@@ -171,15 +236,17 @@ export const App: React.FC = () => {
             <button key={f} className={spec.format === f ? "on" : ""} onClick={() => setSpec((s) => ({ ...s, format: f }))}>{f}</button>
           ))}
         </div>
-        <select style={{ width: 110 }} value={spec.theme} onChange={(e) => setSpec((s) => ({ ...s, theme: e.target.value as any }))} aria-label="Theme">
+        <select style={{ width: 100 }} value={spec.theme} onChange={(e) => setSpec((s) => ({ ...s, theme: e.target.value as any }))} aria-label="Theme">
           {Object.entries(THEMES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
-        <div className="seg" title="Music">
-          <button className={spec.music === "trailer" ? "on" : ""} onClick={() => setSpec((s) => ({ ...s, music: "trailer" }))}>Music</button>
-          <button className={spec.music === "none" ? "on" : ""} onClick={() => setSpec((s) => ({ ...s, music: "none" }))}>Mute</button>
+        <div className="seg" title="Music source">
+          <button className={spec.music === "trailer" ? "on" : ""} onClick={() => setMusic("trailer")}>Trailer</button>
+          <button className={spec.music === "custom" ? "on" : ""} onClick={() => setMusic("custom")}>Custom</button>
+          <button className={spec.music === "none" ? "on" : ""} onClick={() => setMusic("none")}>Mute</button>
         </div>
         <button className="btn" onClick={undo} disabled={!hist.current.stack.length}>Undo</button>
-        <button className="btn gold" onClick={render} disabled={!id || active}>{active ? "Rendering…" : "Render MP4"}</button>
+        <button className="btn gold" onClick={() => render()} disabled={!id || active}>{active ? "Rendering…" : "Render MP4"}</button>
+        <button className="btn" onClick={() => render(["9:16", "1:1", "16:9"])} disabled={!id || active} title="Render all three sizes">All sizes</button>
       </header>
 
       <div className="main">
@@ -200,16 +267,32 @@ export const App: React.FC = () => {
             )}
             <textarea placeholder="Describe the reel: audience, feature to sell, mood, length…" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
             <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn orange" style={{ flex: 1 }} disabled={busy || !prompt.trim() || !canAsk} onClick={() => generate(false)}>{busy ? "Thinking…" : "New reel"}</button>
-              <button className="btn" style={{ flex: 1 }} disabled={busy || !prompt.trim() || !canAsk} onClick={() => generate(true)}>Revise this</button>
+              <select className="varsel" value={variants} onChange={(e) => setVariants(Number(e.target.value))} aria-label="How many reels">
+                {[1, 2, 3, 4, 6].map((n) => <option key={n} value={n}>{n} {n === 1 ? "reel" : "reels"}</option>)}
+              </select>
+              <button className="btn orange" style={{ flex: 1 }} disabled={busy || !prompt.trim() || !canAsk} onClick={() => generate(false)}>{busy ? "Working…" : variants > 1 ? `Make ${variants}` : "New reel"}</button>
+              <button className="btn" disabled={busy || !prompt.trim() || !canAsk} onClick={() => generate(true)} title="Rewrite the open reel to match the brief">Revise</button>
             </div>
+            <label>Music for the new reel</label>
+            <div className="seg" style={{ width: "100%" }}>
+              <button style={{ flex: 1 }} className={musicMode === "compose" ? "on" : ""} onClick={() => setMusicMode("compose")} title="Claude composes a new beat scored to the reel's own scenes">New beat</button>
+              <button style={{ flex: 1 }} className={musicMode === "trailer" ? "on" : ""} onClick={() => setMusicMode("trailer")}>Trailer score</button>
+              <button style={{ flex: 1 }} className={musicMode === "none" ? "on" : ""} onClick={() => setMusicMode("none")}>None</button>
+            </div>
+            {busy && <div className="empty" style={{ marginTop: 6 }}>Claude is writing {variants > 1 ? `${variants} different takes in parallel` : "the storyboard"}{musicMode === "compose" ? ", then composing a beat scored to each" : ""}. This takes 1 to 3 min.</div>}
+            {musicMode === "compose" && <div className="chips"><button className="chip" onClick={() => setPrompt((p) => `${p}${p.trim() ? ". " : ""}Music like the trailer score: bright chip-pop, 128 BPM D minor, sneaky intro then a big four-on-the-floor drop.`)}>+ trailer-style music</button></div>}
             <div className="chips">{IDEAS.map((i) => <button key={i} className="chip" onClick={() => setPrompt(i)}>{i.split(":")[0]}</button>)}</div>
+            {notice && <div className="note" style={{ marginTop: 8 }}>{notice}</div>}
             {err && <div className="err">{err}</div>}
           </section>
           <section>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <h3 style={{ margin: 0 }}>Reels</h3>
-              <button className="btn sm" onClick={() => newReel({ ...SAMPLE, title: "New reel" })}>+ Blank</button>
+              <div className="row">
+                <button className="btn sm" onClick={duplicateReel} title="Duplicate this reel">Copy</button>
+                <button className="btn sm" onClick={exportJson} title="Download the reel as JSON">Export</button>
+                <button className="btn sm" onClick={() => newReel({ ...SAMPLE, title: "New reel" })}>+ Blank</button>
+              </div>
             </div>
             <div className="reel-list" style={{ marginTop: 8 }}>
               {reels.map((r) => (
@@ -225,22 +308,22 @@ export const App: React.FC = () => {
           <section>
             <h3>Scene library</h3>
             {lib.map((l) => (
-              <div key={l.id} className="reel-item" title="Insert after the selected scene" onClick={() => { setSpec((sp) => ({ ...sp, scenes: [...sp.scenes.slice(0, sel + 1), { ...l.scene, id: newId() }, ...sp.scenes.slice(sel + 1)] })); setSel(sel + 1); }}>
+              <div key={l.id} className="reel-item" title="Insert after the selected scene" onClick={() => { setSpec((sp) => ({ ...sp, scenes: [...sp.scenes.slice(0, sel + 1), { ...l.scene, id: newId() }, ...sp.scenes.slice(sel + 1)] })); setSel(sel + 1); setSelOv(null); }}>
                 <span style={{ width: 10, height: 10, borderRadius: 3, background: KIND_COLOR[l.scene.kind] }} />
                 <div className="t">{l.name}</div>
                 <button className="x" onClick={(e) => { e.stopPropagation(); api.delScene(l.id).then(() => setLib((x) => x.filter((y) => y.id !== l.id))); }}>✕</button>
               </div>
             ))}
-            {!lib.length && <div className="empty">Save scenes from the Scene tab to reuse them in any reel.</div>}
+            {!lib.length && <div className="empty">Save scenes from the Scene tab (★) to reuse them in any reel.</div>}
           </section>
           <section>
             <h3>Generation history</h3>
             {gens.slice(0, 15).map((g) => (
               <div key={g.id} className="reel-item" style={{ display: "block" }}>
                 <div className="t" style={{ whiteSpace: "normal" }}>{g.prompt}</div>
-                <div className="m">{caps.models.find((m) => m.id === g.model)?.label ?? g.model} · {g.spec.scenes.length} scenes · {new Date(g.at).toLocaleDateString()}</div>
+                <div className="m">{caps.models.find((m) => m.id === g.model)?.label ?? g.model} · {g.spec.scenes.length} scenes{g.spec.music === "custom" ? " · music" : ""} · {new Date(g.at).toLocaleDateString()}</div>
                 <div className="row" style={{ marginTop: 6 }}>
-                  <button className="btn sm" onClick={() => newReel({ ...g.spec, title: g.spec.title })}>Open as reel</button>
+                  <button className="btn sm" onClick={() => newReel(g.spec)}>Open as reel</button>
                   <button className="btn sm" onClick={() => setPrompt(g.prompt)}>Reuse prompt</button>
                   <button className="x" onClick={() => api.delGeneration(g.id).then(() => setGens((x) => x.filter((y) => y.id !== g.id)))}>✕</button>
                 </div>
@@ -254,7 +337,7 @@ export const App: React.FC = () => {
           <div className="stage">
             <div className="frame" style={{ aspectRatio: `${fmt.width} / ${fmt.height}` }}>
               <Player
-                ref={player} component={Reel} inputProps={{ spec }} durationInFrames={durationFrames(spec)} fps={FPS}
+                ref={player} component={Reel} inputProps={{ spec, audioSrc }} durationInFrames={durationFrames(spec)} fps={FPS}
                 compositionWidth={fmt.width} compositionHeight={fmt.height} controls loop acknowledgeRemotionLicense
                 style={{ width: "100%", height: "100%" }} clickToPlay
               />
@@ -262,163 +345,48 @@ export const App: React.FC = () => {
           </div>
           <div className="stage-info">
             <span>{fmt.label} · {fmt.width}×{fmt.height} · {FPS} fps</span>
-            <span>{durationSeconds(spec).toFixed(1)} s · {totalBeats(spec)}/{MAX_BEATS} beats · 128 BPM</span>
+            <span>{durationSeconds(spec).toFixed(1)} s · {totalBeats(spec)}/{limit} beats · {spec.bpm} BPM · space plays, ←/→ scenes</span>
           </div>
-          <Timeline spec={spec} frames={frames} sel={sel} player={player} onSelect={select} onMove={move} onAdd={addScene} />
+          <Timeline
+            spec={spec} frames={frames} sel={sel} selOv={selOv} player={player} onSelect={select}
+            onSelectOv={(oid) => { setSelOv(oid); setTab("scene"); }} onMove={move} onAdd={addScene} onResize={setBeatsAt} onOverlay={patchOv} onAddOverlay={addOverlay}
+          />
         </main>
 
         <aside className="col right">
           <div className="seg" style={{ marginBottom: 14 }}>
             <button className={tab === "scene" ? "on" : ""} onClick={() => setTab("scene")}>Scene</button>
+            <button className={tab === "music" ? "on" : ""} onClick={() => setTab("music")}>Music</button>
             <button className={tab === "renders" ? "on" : ""} onClick={() => setTab("renders")}>Renders{active ? " •" : ""}</button>
           </div>
-          {tab === "scene" ? (
-            scene && <Inspector saveToLib={() => { const n = prompt2(scene); if (n) api.saveScene(n, scene).then(setLib); }} scene={scene} idx={sel} count={spec.scenes.length} patch={patch} setBeats={setBeats} move={move} dup={dup} del={del} />
+          {tab === "scene" && (ov ? (
+            <OverlayInspector o={ov} bpm={spec.bpm} patch={(p) => patchOv(ov.id, p)} del={() => { setSpec((s) => ({ ...s, overlays: s.overlays.filter((o) => o.id !== ov.id) })); setSelOv(null); }}
+              dup={() => { const c = { ...ov, id: newId(), y: Math.min(95, ov.y + 8) }; setSpec((s) => ({ ...s, overlays: [...s.overlays, c] })); setSelOv(c.id); }} />
+          ) : scene && (
+            <SceneInspector
+              scene={scene} idx={sel} count={spec.scenes.length} bpm={spec.bpm} patch={patch} move={move} dup={dup} del={del}
+              setBeats={(n) => setBeatsAt(sel, n)}
+              saveToLib={() => { const n = window.prompt("Name for this scene", `${scene.kind}: ${(scene.text ?? "").replace(/\\n|\n/g, " ").slice(0, 30)}`); if (n) api.saveScene(n, scene).then(setLib); }}
+            />
+          ))}
+          {tab === "music" && (spec.music === "custom" && spec.track ? (
+            <MusicPanel spec={spec} setSpec={setSpec} provider={provider} model={model} canAsk={canAsk} tracks={tracks} setTracks={setTracks} />
           ) : (
-            <Renders jobs={jobs} renders={renders} />
-          )}
+            <div>
+              <p className="empty">{spec.music === "trailer" ? "This reel uses the 128 BPM trailer score." : "This reel is silent."}</p>
+              <button className="btn gold" style={{ marginTop: 10 }} onClick={() => setMusic("custom")}>Make original music</button>
+              <p className="empty" style={{ marginTop: 10 }}>A drum machine, bass, lead and chords in your reel's own tempo. Every scene length snaps to its beats.</p>
+            </div>
+          ))}
+          {tab === "renders" && <Renders jobs={jobs} renders={renders} />}
         </aside>
       </div>
     </div>
   );
 };
 
-const Timeline: React.FC<{
-  spec: ReelSpec; frames: { from: number; frames: number }[]; sel: number; player: React.RefObject<PlayerRef | null>;
-  onSelect: (i: number) => void; onMove: (a: number, b: number) => void; onAdd: (k: SceneKind) => void;
-}> = ({ spec, frames, sel, player, onSelect, onMove, onAdd }) => {
-  const [frame, setFrame] = useState(0);
-  const [drag, setDrag] = useState<number | null>(null);
-  const [over, setOver] = useState<number | null>(null);
-  useEffect(() => {
-    const p = player.current;
-    if (!p) return;
-    const f = (e: { detail: { frame: number } }) => setFrame(e.detail.frame);
-    p.addEventListener("frameupdate", f);
-    return () => p.removeEventListener("frameupdate", f);
-  }, [player]);
-  const total = durationFrames(spec);
-  return (
-    <div className="timeline">
-      <div className="tl-head">
-        <h3 style={{ margin: 0 }}>Timeline · drag to reorder</h3>
-      </div>
-      <div className="tl-track">
-        {spec.scenes.map((s, i) => (
-          <div
-            key={s.id} draggable className={`blk ${i === sel ? "on" : ""} ${over === i && drag !== i ? "over" : ""}`}
-            style={{ flex: `${frames[i].frames} 1 0`, background: KIND_COLOR[s.kind] }}
-            onClick={() => onSelect(i)} onDragStart={() => setDrag(i)} onDragOver={(e) => { e.preventDefault(); setOver(i); }}
-            onDrop={() => { if (drag !== null) onMove(drag, i); setDrag(null); setOver(null); }} onDragEnd={() => { setDrag(null); setOver(null); }}
-          >
-            <b>{KINDS[s.kind].label}</b>
-            <span>{s.beats} beats · {(s.beats * BEAT).toFixed(1)}s{s.text ? ` · ${s.text.replace(/\\n|\n/g, " ")}` : ""}</span>
-          </div>
-        ))}
-        <div className="playhead" style={{ left: `${(frame / total) * 100}%` }} />
-      </div>
-      <div className="add">
-        {(Object.keys(KINDS) as SceneKind[]).map((k) => (
-          <button key={k} className="btn sm ghost" title={KINDS[k].hint} onClick={() => onAdd(k)}>+ {KINDS[k].label}</button>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const prompt2 = (sc: Scene) => window.prompt("Name for this scene", `${KINDS[sc.kind].label}: ${(sc.text ?? "").replace(/\\n|\n/g, " ").slice(0, 30)}`);
-
-const Inspector: React.FC<{ saveToLib: () => void;
-  scene: Scene; idx: number; count: number; patch: (p: Partial<Scene>) => void; setBeats: (n: number) => void;
-  move: (a: number, b: number) => void; dup: () => void; del: () => void;
-}> = ({ scene, idx, count, patch, setBeats, move, dup, del, saveToLib }) => {
-  const k = scene.kind;
-  const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  const changeKind = (nk: SceneKind) => patch({ ...DEFAULT_SCENE[nk], beats: scene.beats, kind: nk });
-  return (
-    <div>
-      <div className="insp-head">
-        <h3 style={{ margin: 0 }}>Scene {idx + 1} of {count}</h3>
-        <div className="row">
-          <button className="btn sm" onClick={() => move(idx, idx - 1)} disabled={idx === 0} title="Earlier">←</button>
-          <button className="btn sm" onClick={() => move(idx, idx + 1)} disabled={idx === count - 1} title="Later">→</button>
-          <button className="btn sm" onClick={dup}>Copy</button>
-          <button className="btn sm" onClick={saveToLib} title="Save to scene library">★</button>
-          <button className="btn sm" onClick={del} disabled={count <= 1}>Delete</button>
-        </div>
-      </div>
-      <p className="empty" style={{ marginTop: 4 }}>{KINDS[k].hint}</p>
-
-      <label>Type</label>
-      <select value={k} onChange={(e) => changeKind(e.target.value as SceneKind)}>
-        {Object.entries(KINDS).map(([key, v]) => <option key={key} value={key}>{v.label}</option>)}
-      </select>
-
-      <label>Length</label>
-      <div className="stepper">
-        <button className="btn sm" onClick={() => setBeats(scene.beats - 1)}>−</button>
-        <output>{scene.beats} beats · {(scene.beats * BEAT).toFixed(2)}s</output>
-        <button className="btn sm" onClick={() => setBeats(scene.beats + 1)}>+</button>
-        <button className="btn sm ghost" onClick={() => setBeats(scene.beats + 4)} title="Add one bar">+bar</button>
-      </div>
-
-      {(k === "title") && (<><label>Headline (Enter = new line)</label><textarea style={{ minHeight: 64 }} value={(scene.text ?? "").replace(/\\n/g, "\n")} onChange={(e) => patch({ text: e.target.value })} /></>)}
-      {(k === "plate" || k === "voxel" || k === "icons") && (<><label>Caption</label><input type="text" value={scene.text ?? ""} onChange={(e) => patch({ text: e.target.value })} /></>)}
-      {k === "alert" && (<><label>Banner</label><input type="text" value={scene.text ?? ""} onChange={(e) => patch({ text: e.target.value })} /></>)}
-      {k === "cta" && (<><label>Tagline</label><input type="text" value={scene.text ?? ""} onChange={(e) => patch({ text: e.target.value })} /></>)}
-      {(k === "title" || k === "plate" || k === "alert") && (<><label>{k === "plate" ? "Sticker" : "Sub line"}</label><input type="text" value={scene.sub ?? ""} onChange={(e) => patch({ sub: e.target.value })} /></>)}
-
-      {k === "words" && (
-        <>
-          <label>Words (one per line, one per beat)</label>
-          <textarea value={(scene.items ?? []).join("\n")} onChange={(e) => patch({ items: e.target.value.split("\n").slice(0, 16) })} />
-        </>
-      )}
-      {k === "cta" && (
-        <>
-          <label>Platform chips (one per line)</label>
-          <textarea style={{ minHeight: 56 }} value={(scene.items ?? []).join("\n")} onChange={(e) => patch({ items: e.target.value.split("\n").slice(0, 4) })} />
-        </>
-      )}
-      {k === "plate" && (
-        <>
-          <label>Screenshot</label>
-          <div className="plates">
-            {Object.keys(PLATES).map((p) => (
-              <button key={p} className={scene.plate === p ? "on" : ""} title={PLATES[p]} onClick={() => patch({ plate: p })}>
-                <img src={`/plates/${p}.jpg`} alt={PLATES[p]} />
-              </button>
-            ))}
-          </div>
-          <p className="empty">{PLATES[scene.plate ?? "fp0"]}</p>
-        </>
-      )}
-      {k === "voxel" && (
-        <>
-          <label>Diorama</label>
-          <div className="seg"><button className={scene.variant !== "icon" ? "on" : ""} onClick={() => patch({ variant: "hero" })}>Student</button><button className={scene.variant === "icon" ? "on" : ""} onClick={() => patch({ variant: "icon" })}>Icon</button></div>
-        </>
-      )}
-      {k === "icons" && (
-        <>
-          <label>Items (order = pop order)</label>
-          <div className="items">
-            {Object.entries(ITEMS).map(([key, name]) => (
-              <button key={key} className={(scene.items ?? []).includes(key) ? "on" : ""} onClick={() => patch({ items: toggle(scene.items ?? [], key).slice(0, 6) })}>{name}</button>
-            ))}
-          </div>
-        </>
-      )}
-      <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 16 }}>
-        <input type="checkbox" checked={scene.flash !== false} onChange={(e) => patch({ flash: e.target.checked ? undefined : false })} /> Flash on cut
-      </label>
-    </div>
-  );
-};
-
 const Renders: React.FC<{ jobs: Job[]; renders: RenderRow[] }> = ({ jobs, renders }) => {
   const running = jobs.filter((j) => j.status !== "done");
-  const doneFiles = new Set(renders.map((r) => r.file));
   return (
     <div className="jobs">
       {running.map((j) => (
@@ -442,7 +410,6 @@ const Renders: React.FC<{ jobs: Job[]; renders: RenderRow[] }> = ({ jobs, render
         </div>
       ))}
       {!renders.length && !running.length && <div className="empty">Rendered MP4s appear here. Hit “Render MP4”.</div>}
-      {void doneFiles}
     </div>
   );
 };

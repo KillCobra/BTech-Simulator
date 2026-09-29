@@ -1,21 +1,21 @@
 {
-  "title": "Bunk Master - Coming Soon Teaser",
+  "title": "Staff Hear Volume, Not Words",
   "format": "9:16",
-  "theme": "dusk",
+  "theme": "night",
   "bpm": 128,
-  "music": "custom",
+  "music": "trailer",
   "track": {
-    "key": 2,
-    "scale": "minor",
-    "kit": "punch",
+    "key": 0,
+    "scale": "pentatonic",
+    "kit": "8bit",
     "swing": 0,
     "prog": [
-      0,
-      5,
       2,
-      6
+      6,
+      5,
+      3
     ],
-    "dropBar": 2,
+    "dropBar": 5,
     "fill": true,
     "riser": true,
     "drums": {
@@ -42,6 +42,7 @@
         0,
         0,
         0,
+        1,
         0,
         0,
         0,
@@ -49,11 +50,10 @@
         0,
         0,
         0,
+        1,
+        1,
         0,
-        0,
-        0,
-        0,
-        1
+        0
       ],
       "clap": [
         0,
@@ -76,72 +76,72 @@
       "hat": [
         1,
         0,
-        2,
+        1,
+        0,
+        1,
+        1,
+        1,
         0,
         1,
         0,
-        2,
+        1,
         0,
         1,
         0,
-        2,
-        0,
         1,
-        0,
-        2,
-        1
+        0
       ],
       "perc": [
-        1,
         0,
         0,
         0,
         0,
         0,
-        1,
         0,
-        1,
         0,
         0,
         0,
         0,
         0,
         1,
+        0,
+        0,
+        0,
         0
       ]
     },
     "bass": [
       0,
       null,
-      0,
+      null,
+      null,
+      4,
+      null,
       null,
       0,
-      null,
+      0,
       0,
       null,
-      0,
       null,
-      0,
+      3,
       null,
-      0,
       null,
-      0,
       null
     ],
     "lead": [
       null,
       null,
-      null,
-      7,
-      null,
       9,
       null,
-      8,
       null,
       null,
-      7,
       null,
-      6,
+      null,
+      null,
+      4,
+      null,
+      null,
+      null,
       null,
       null,
       null
@@ -150,9 +150,9 @@
     "syncCuts": true,
     "mix": {
       "drums": 0.9,
-      "bass": 0.65,
-      "lead": 0.4,
-      "chords": 0.5
+      "bass": 0.8,
+      "lead": 0.55,
+      "chords": 0.6
     }
   },
   "overlays": [],
@@ -163,66 +163,48 @@
       "kind": "words",
       "beats": 4,
       "items": [
-        "SNEAK",
-        "HIDE",
-        "RUN",
-        "ESCAPE"
+        "SHHH.",
+        "STAFF",
+        "HEAR",
+        "LOUDNESS"
       ]
+    },
+    {
+      "id": "prox",
+      "kind": "title",
+      "beats": 6,
+      "text": "Proximity\nvoice",
+      "sub": "Talk with your crew"
     },
     {
       "id": "plan",
       "kind": "plate",
       "beats": 6,
-      "text": "Make a plan.",
-      "sub": "Up to 8 friends.",
-      "plate": "fp0"
+      "text": "Whisper the plan",
+      "sub": "Friends hear you up close",
+      "plate": "class0"
     },
     {
-      "id": "oops",
+      "id": "rule",
+      "kind": "title",
+      "beats": 6,
+      "text": "They hear\nhow LOUD.",
+      "sub": "Never what you say."
+    },
+    {
+      "id": "busted",
       "kind": "alert",
-      "beats": 4,
-      "text": "RUN!",
-      "sub": "Someone ruined it."
+      "beats": 6,
+      "text": "TOO LOUD!",
+      "sub": "Staff heard the noise"
     },
     {
-      "id": "tools",
-      "kind": "icons",
-      "beats": 7,
-      "text": "Improvise.",
-      "items": [
-        "hall_pass",
-        "samosa",
-        "medical_note",
-        "canteen_key",
-        "library_book",
-        "detention_ticket"
-      ]
-    },
-    {
-      "id": "maps",
+      "id": "sneak",
       "kind": "plate",
       "beats": 6,
-      "text": "Big maps. Many escape routes.",
-      "sub": "PROXIMITY VOICE",
-      "plate": "c_air1"
-    },
-    {
-      "id": "beat",
-      "kind": "words",
-      "beats": 4,
-      "items": [
-        "PLAN",
-        "RUINED",
-        "PANIC",
-        "ESCAPE"
-      ]
-    },
-    {
-      "id": "barely",
-      "kind": "title",
-      "beats": 4,
-      "text": "Barely\nget out.",
-      "sub": "Coming soon"
+      "text": "Keep it down. Get out.",
+      "sub": "Up to 8 friends",
+      "plate": "fp0"
     },
     {
       "id": "end",
