@@ -1,9 +1,10 @@
 extends Node
 ## Proximity voice chat, registered as the `Voice` autoload.
 ##
-## Your mic is captured on a muted "Mic" bus, averaged down to 16 kHz mono, cut into
-## 20 ms frames and squeezed 4:1 with IMA ADPCM (8 kB/s while you talk, nothing while
-## you don't). Frames go to the host, which relays them to everyone close enough to
+## Your mic is captured on a muted "Mic" bus, cleaned up (rumble filter, anti-alias low-pass,
+## gentle auto-gain), resampled to 24 kHz mono, cut into 20 ms frames and squeezed 4:1 with
+## IMA ADPCM (12 kB/s while you talk, nothing while you don't). Listeners keep a small jitter
+## buffer so network hiccups don't crackle. Frames go to the host, which relays them to everyone close enough to
 ## hear. Each friend's voice plays from their head: clear next to you, fading down the
 ## corridor, muffled through walls and heavily muffled through floors.
 ##
@@ -12,8 +13,12 @@ extends Node
 
 signal heard(peer_id: int, rms: float)  # host only: someone's mic frame (for staff hearing)
 
-const RATE := 16000
-const FRAME := 320            # samples per packet (20 ms)
+const RATE := 24000
+const FRAME := 480            # samples per packet (20 ms)
+const PREBUFFER := 3          # frames a listener collects before a voice starts playing (60 ms)
+const MAX_BUFFERED := 8       # ...and the most it may hold before we drop frames to stay live (160 ms)
+const TARGET_RMS := 0.09      # auto-gain aims a talking voice here
+const MAX_GAIN := 6.0
 const HANG := 0.35            # open mic: keep sending this long after you stop talking
 const HEADER := 6             # see scripts/adpcm.gd
 
@@ -29,8 +34,13 @@ var _mic_player: AudioStreamPlayer
 var _src_rate := 44100.0
 var _step := 1.0           # output samples per input sample
 var _phase := 0.0
-var _acc := 0.0
-var _acc_n := 0
+var _lp := [[0.0, 0.0], [0.0, 0.0]]    # low-pass stages' input history (x1, x2)
+var _lp_y := [[0.0, 0.0], [0.0, 0.0]]  # ...and output history (y1, y2)
+var _lp_c := PackedFloat64Array()      # b0, b1, a1, a2 (b2 = b0)
+var _hp_x := 0.0
+var _hp_y := 0.0
+var _prev := 0.0
+var _gain := 1.0
 var _pcm := PackedFloat32Array()
 var _seq := 0
 var _hang := 0.0
@@ -92,7 +102,28 @@ func _start_mic() -> void:
 	add_child(_mic_player)
 	_src_rate = AudioServer.get_mix_rate()
 	_step = float(RATE) / _src_rate
+	_make_lowpass()
 	mic_ok = true
+
+
+## 4th-order Butterworth low-pass (two biquads) just under the new Nyquist, so resampling doesn't fold noise back.
+func _make_lowpass() -> void:
+	var w0 := TAU * minf(RATE * 0.44, _src_rate * 0.45) / _src_rate
+	var alpha := sin(w0) / (2.0 * 0.7071)
+	var c := cos(w0)
+	var a0 := 1.0 + alpha
+	_lp_c = PackedFloat64Array([(1.0 - c) * 0.5 / a0, (1.0 - c) / a0, -2.0 * c / a0, (1.0 - alpha) / a0])
+
+
+func _biquad(k: int, x: float) -> float:
+	var st: Array = _lp[k]
+	var ys: Array = _lp_y[k]
+	var y: float = _lp_c[0] * (x + st[1]) + _lp_c[1] * st[0] - _lp_c[2] * ys[0] - _lp_c[3] * ys[1]
+	st[1] = st[0]
+	st[0] = x
+	ys[1] = ys[0]
+	ys[0] = y
+	return y
 
 
 ## Friends and staff can only hear you once there's a session.
@@ -120,7 +151,7 @@ func _process(delta: float) -> void:
 	_update_voices(delta)
 
 
-## Mic (or the dev test voice) -> 16 kHz samples in _pcm. The mic is only open in a
+## Mic (or the dev test voice) -> 24 kHz samples in _pcm. The mic is only open in a
 ## session (or while the settings meter is up) and never when it's switched off.
 func _read_mic(delta: float) -> void:
 	if _mic_player:
@@ -149,16 +180,17 @@ func _read_mic(delta: float) -> void:
 	if avail <= 0:
 		return
 	var buf := _capture.get_buffer(avail)
-	# Box-filter down to 16 kHz: average the input samples that fall in each output sample.
+	# Mono, rumble/DC filter, anti-alias low-pass, then linear-interpolated down to RATE.
 	for v in buf:
-		_acc += (v.x + v.y) * 0.5
-		_acc_n += 1
+		var x: float = (v.x + v.y) * 0.5
+		_hp_y = x - _hp_x + 0.99 * _hp_y
+		_hp_x = x
+		var cur := _biquad(1, _biquad(0, _hp_y)) if _src_rate > RATE else _hp_y
 		_phase += _step
 		if _phase >= 1.0:
 			_phase -= 1.0
-			_pcm.append(_acc / _acc_n)
-			_acc = 0.0
-			_acc_n = 0
+			_pcm.append(_prev + (cur - _prev) * (1.0 - _phase / _step))
+		_prev = cur
 	if _pcm.size() > RATE:  # fell far behind (window dragged, breakpoint): drop the backlog
 		_pcm = _pcm.slice(_pcm.size() - FRAME * 2)
 
@@ -185,7 +217,14 @@ func _frame(frame: PackedFloat32Array, seconds: float) -> void:
 	if not want or not _online():
 		return
 	_seq = (_seq + 1) & 0xffff
-	var packet := Adpcm.encode(frame, level, _seq)
+	# Gentle auto-gain: quiet mics come up (never past MAX_GAIN), loud ones ease down, peaks never clip.
+	var want_gain := clampf(TARGET_RMS / maxf(level, 0.002), 0.7, MAX_GAIN) if level > 0.004 else _gain
+	_gain = lerpf(_gain, want_gain, 0.15 if want_gain < _gain else 0.05)
+	var out_frame := PackedFloat32Array()
+	out_frame.resize(frame.size())
+	for i in frame.size():
+		out_frame[i] = tanh(frame[i] * _gain * 0.9) / 0.9 * 0.95
+	var packet := Adpcm.encode(out_frame, level, _seq)
 	var me := multiplayer.get_unique_id()
 	if multiplayer.is_server():
 		_received(me, packet)
@@ -248,12 +287,23 @@ func _received(from: int, packet: PackedByteArray) -> void:
 	if pb == null:
 		return
 	var samples := Adpcm.decode(packet)
-	if pb.get_frames_available() < samples.size():
-		return  # the buffer is full (their clock runs fast): skip a frame rather than lag
+	var capacity := int(out.capacity)
+	var buffered := capacity - pb.get_frames_available()
+	if buffered > MAX_BUFFERED * FRAME:
+		return  # their clock runs fast or we stalled: skip a frame rather than lag
 	var frames := PackedVector2Array()
 	frames.resize(samples.size())
 	for i in samples.size():
 		frames[i] = Vector2(samples[i], samples[i])
+	if buffered <= 0:
+		out.primed = false  # ran dry: start over so a late packet doesn't play as a click
+	if not out.primed:
+		out.pending.append_array(frames)
+		if out.pending.size() < PREBUFFER * FRAME:
+			return
+		frames = out.pending
+		out.pending = PackedVector2Array()
+		out.primed = true
 	pb.push_buffer(frames)
 
 
@@ -263,7 +313,7 @@ func _out(from: int) -> Dictionary:
 		return _peers[from]
 	var gen := AudioStreamGenerator.new()
 	gen.mix_rate = RATE
-	gen.buffer_length = 0.25
+	gen.buffer_length = 0.5
 	var p := AudioStreamPlayer3D.new()
 	p.stream = gen
 	p.bus = "Voice"
@@ -272,7 +322,8 @@ func _out(from: int) -> Dictionary:
 	p.attenuation_filter_cutoff_hz = 20500.0
 	add_child(p)
 	p.play()
-	var out := {"player": p, "playback": p.get_stream_playback(), "last": -10.0, "seq": -1, "rms": 0.0, "occl_t": 0.0}
+	var out := {"player": p, "playback": p.get_stream_playback(), "last": -10.0, "seq": -1, "rms": 0.0, "occl_t": 0.0,
+			"capacity": int(gen.buffer_length * RATE), "primed": false, "pending": PackedVector2Array()}
 	_peers[from] = out
 	print("[voice] hearing peer %d" % from)
 	return out

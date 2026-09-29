@@ -5,8 +5,8 @@ extends SceneTree
 
 func _init() -> void:
 	var codec := preload("res://scripts/adpcm.gd")
-	var frame_len := 320
-	var rate := 16000.0
+	var frame_len := 480
+	var rate := 24000.0
 	var worst := 999.0
 	for kind in ["sweep", "buzz", "quiet"]:
 		var frame := PackedFloat32Array()
