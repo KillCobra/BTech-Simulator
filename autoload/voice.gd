@@ -3,7 +3,8 @@ extends Node
 ##
 ## Your mic is captured on a muted "Mic" bus, cleaned up (rumble filter, anti-alias low-pass,
 ## gentle auto-gain), resampled to 24 kHz mono, cut into 20 ms frames and squeezed 4:1 with
-## IMA ADPCM (12 kB/s while you talk, nothing while you don't). Listeners keep a small jitter
+## IMA ADPCM (12 kB/s while you talk, nothing while you don't). An open mic starts after 3 loud frames in a row
+## (a key click is never voice) and first sends the ~100 ms before them, so words aren't clipped. Listeners keep a small jitter
 ## buffer so network hiccups don't crackle. Frames go to the host, which relays them to everyone close enough to
 ## hear. Each friend's voice plays from their head: clear next to you, fading down the
 ## corridor, muffled through walls and heavily muffled through floors.
@@ -18,14 +19,17 @@ const FRAME := 480            # samples per packet (20 ms)
 const PREBUFFER := 3          # frames a listener collects before a voice starts playing (60 ms)
 const MAX_BUFFERED := 8       # ...and the most it may hold before we drop frames to stay live (160 ms)
 const TARGET_RMS := 0.09      # auto-gain aims a talking voice here
-const MAX_GAIN := 6.0
+const MAX_GAIN := 10.0        # quiet mics come up this much at most (+20 dB)
 const HANG := 0.35            # open mic: keep sending this long after you stop talking
+const MIN_OPEN := 3           # loud 20 ms frames in a row before an open mic starts (a key click or thump is one or two)
+const PREROLL := 5            # frames kept from before it opened (the frames that crossed the gate + ~60 ms), so the first syllable survives
 const HEADER := 6             # see scripts/adpcm.gd
 
 const Adpcm := preload("res://scripts/adpcm.gd")
 
 var transmitting := false  # local: your mic is live right now (HUD shows it)
 var level := 0.0           # local: loudness of your last 20 ms (RMS, 0..1), for the meter
+var recent := 0.0          # local: loudest 20 ms of the last ~0.3 s (what the Director judges), for the HUD's "staff hear you" range
 var mic_ok := false        # a microphone can be captured
 var monitoring := false    # the settings page's mic meter is open: listen even outside a session
 
@@ -44,6 +48,9 @@ var _gain := 1.0
 var _pcm := PackedFloat32Array()
 var _seq := 0
 var _hang := 0.0
+var _hot := 0              # open mic: consecutive frames at or above the gate (see MIN_OPEN)
+var _pre: Array = []       # [[frame, level], ...] the latest frames while an open mic was closed (see PREROLL)
+var _recent_t := 0.0
 var _peers := {}           # peer id -> {"player", "playback", "last", "seq", "rms", "occl_t"}
 var _test_amp := 0.0       # dev: --voice-test=AMP talks a synthetic voice instead of the mic
 var _test_t := 0.0
@@ -165,7 +172,11 @@ func _read_mic(delta: float) -> void:
 				_mic_player.stop()
 				_capture.clear_buffer()
 				level = 0.0
+				recent = 0.0
 				transmitting = false
+				_hot = 0
+				_hang = 0.0
+				_pre.clear()
 	if _test_amp > 0.0:
 		# Dev: a buzzy "voice" that talks for 1.5 s, then pauses for 1.5 s.
 		var n := int(delta * RATE)
@@ -196,35 +207,70 @@ func _read_mic(delta: float) -> void:
 
 
 ## One 20 ms frame of your voice: decide whether it goes out, then send it.
+## An open mic needs MIN_OPEN loud frames in a row to start (a key click is one or two), then sends the
+## PREROLL frames from just before so the first syllable isn't clipped. Push-to-talk never sends audio from before the key.
 func _frame(frame: PackedFloat32Array, seconds: float) -> void:
 	var sum := 0.0
 	for x in frame:
 		sum += x * x
 	level = sqrt(sum / frame.size())
+	_recent_t -= seconds
+	if level >= recent or _recent_t <= 0.0:  # a ~0.3 s peak hold: what the Director judges, so the HUD range matches
+		recent = level
+		_recent_t = 0.3
 	var mode := int(Settings.voice_mode)
+	var was_open := transmitting
 	var want := false
+	var pre_roll := _test_amp <= 0.0 and mode == Settings.VoiceMode.OPEN_MIC
 	if _test_amp > 0.0:
 		want = level > 0.001
-	elif mode == Settings.VoiceMode.OPEN_MIC:
+	elif pre_roll:
 		if level >= float(Settings.mic_gate):
-			_hang = HANG
+			_hot += 1
+			if _hot >= MIN_OPEN or _hang > 0.0:  # speech holds for 3+ frames, a click doesn't (and a mic already open stays open)
+				_hang = HANG
 		else:
-			_hang -= seconds
+			_hot = 0
+			_hang = maxf(_hang - seconds, 0.0)
 		want = _hang > 0.0
 	elif mode == Settings.VoiceMode.PUSH_TO_TALK:
 		want = _ptt_held()
+	if not pre_roll:  # only an open mic keeps history: switching mode forgets it, so push-to-talk can't leak pre-key audio
+		_hot = 0
+		_hang = 0.0
+		_pre.clear()
 	transmitting = want
-	if not want or not _online():
+	if not want:
+		if pre_roll:
+			_pre.append([frame, level])
+			if _pre.size() > PREROLL:
+				_pre.pop_front()
 		return
+	if not _online():
+		_pre.clear()
+		return
+	if not was_open:  # the mic just opened: send the words that led up to it first
+		for p: Array in _pre:
+			_send(p[0], float(p[1]))
+	_pre.clear()
+	_send(frame, level)
+
+
+## Encodes one frame and sends it to the host (or relays it, on the host).
+func _send(frame: PackedFloat32Array, lvl: float) -> void:
 	_seq = (_seq + 1) & 0xffff
-	# Gentle auto-gain: quiet mics come up (never past MAX_GAIN), loud ones ease down, peaks never clip.
-	var want_gain := clampf(TARGET_RMS / maxf(level, 0.002), 0.7, MAX_GAIN) if level > 0.004 else _gain
+	# Gentle auto-gain: quiet mics come up (never past MAX_GAIN), loud ones ease down, peaks never clip. It only follows
+	# real speech (above the gate), not the room noise in the hang tail or the pre-roll, so the next word doesn't hit a swollen gain.
+	var floor_level := 0.004
+	if _test_amp <= 0.0 and int(Settings.voice_mode) == Settings.VoiceMode.OPEN_MIC:
+		floor_level = float(Settings.mic_gate)
+	var want_gain := clampf(TARGET_RMS / maxf(lvl, 0.002), 0.7, MAX_GAIN) if lvl >= floor_level else _gain
 	_gain = lerpf(_gain, want_gain, 0.15 if want_gain < _gain else 0.05)
 	var out_frame := PackedFloat32Array()
 	out_frame.resize(frame.size())
 	for i in frame.size():
 		out_frame[i] = tanh(frame[i] * _gain * 0.9) / 0.9 * 0.95
-	var packet := Adpcm.encode(out_frame, level, _seq)
+	var packet := Adpcm.encode(out_frame, lvl, _seq)
 	var me := multiplayer.get_unique_id()
 	if multiplayer.is_server():
 		_received(me, packet)

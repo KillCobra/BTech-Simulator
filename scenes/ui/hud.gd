@@ -215,6 +215,8 @@ var _banner: PanelContainer
 var _banner_label: Label
 var _objective: Label
 var _quests: VBoxContainer
+var _badges: HBoxContainer  # merit badges (full marks), a shelf under the quest card
+var _badges_seen := ""
 var _slots: Array[Label] = []
 var _feed: VBoxContainer
 var _hint: Label
@@ -281,6 +283,13 @@ var _floor_seen := -1
 var _floor_flash := 0.0
 # Heat, the round intro, style pop-ups, the spotted warning and the escape moment.
 var _heat_label: Label
+const HEAT_COLORS := [Color("ffffff"), Color("7fe0a0"), Color("ffd24a"), Color("ff9a4a"), Color("ff5a5a")]  # index = heat
+var _heat_title: Label      # the banner when the heat rises, and the line under it
+var _heat_sub: Label
+var _heat_edge: ColorRect   # soft glow round the screen edge (shaders/heat_edge.gdshader)
+var _heat_edge_mat: ShaderMaterial
+var _heat_flash := 0.0
+var _heat_tw: Tween
 var _intro: PanelContainer
 var _style_box: VBoxContainer
 var _edge: EdgePulse
@@ -318,7 +327,8 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_fit_frame)
 	Settings.changed.connect(_fit_frame)
 	_fit_frame()
-	# Danger vignette first, so all HUD elements draw on top of it.
+	# Danger vignette: the bottom of the stack (index 0, under _frame), so it only blurs and darkens
+	# the 3D world and never the HUD panels (it reads the screen texture, so it covers what's below it).
 	_vignette = ColorRect.new()
 	_vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -327,6 +337,7 @@ func _ready() -> void:
 	_vignette.material = _vignette_mat
 	_vignette.visible = false
 	add_child(_vignette)
+	move_child(_vignette, 0)
 
 	_markers = Markers.new()
 	_markers.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -426,6 +437,16 @@ func _ready() -> void:
 	add_child(_edge)  # screen effect: not scaled with the HUD
 	move_child(_edge, 1)  # over the vignette, under everything else
 
+	_heat_edge_mat = ShaderMaterial.new()
+	_heat_edge_mat.shader = preload("res://shaders/heat_edge.gdshader")
+	_heat_edge = ColorRect.new()
+	_heat_edge.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_heat_edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_heat_edge.material = _heat_edge_mat
+	_heat_edge.visible = false
+	add_child(_heat_edge)  # screen effect: not scaled with the HUD
+	move_child(_heat_edge, 1)  # over the vignette, under the warning edge and everything else
+
 	_style_box = VBoxContainer.new()
 	_style_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_style_box.position += Vector2(90, -120)
@@ -442,6 +463,25 @@ func _ready() -> void:
 	_escape_big.add_theme_color_override("font_color", Color("7fe0a0"))
 	_escape_big.visible = false
 	_frame.add_child(_escape_big)
+
+	# Heat rises: a banner and a line under it (own slot, so toasts and catches cannot overwrite it).
+	_heat_title = _outlined("", 56)
+	_heat_title.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_heat_title.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_heat_title.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_heat_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_heat_title.position.y -= 27  # clear of the PA box (top 150, up to 3 lines) and above the toast
+	_heat_title.visible = false
+	_frame.add_child(_heat_title)
+	_heat_sub = _outlined("", 20)
+	_heat_sub.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_heat_sub.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_heat_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_heat_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_heat_sub.custom_minimum_size = Vector2(720, 0)
+	_heat_sub.position.y += 20
+	_heat_sub.visible = false
+	_frame.add_child(_heat_sub)
 
 	_build_dialog()
 	_build_end_screen()
@@ -515,6 +555,11 @@ func _build_left_column() -> void:
 	_quests = VBoxContainer.new()
 	_quests.add_theme_constant_override("separation", 4)
 	qcard.add_child(_quests)
+	_badges = HBoxContainer.new()
+	_badges.add_theme_constant_override("separation", 6)
+	_badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_badges.visible = false
+	column.add_child(_badges)
 
 
 func _build_meter() -> void:
@@ -562,7 +607,9 @@ func _build_meter() -> void:
 	_pass.add_theme_color_override("font_color", Color("9fd8ff"))
 	box.add_child(_pass)
 	_heat_label = Label.new()
-	_heat_label.add_theme_font_size_override("font_size", 14)
+	_heat_label.add_theme_font_size_override("font_size", 16)
+	_heat_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # never stretch the card off the right edge
+	_heat_label.custom_minimum_size.x = 256
 	box.add_child(_heat_label)
 
 
@@ -869,7 +916,7 @@ func setup_map(campus: RefCounted) -> void:
 					game.variant = int(v.trim_prefix("--variant="))
 			_frame.add_child(game)
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		if arg.begins_with("--phone="):  # dev: --phone=-1..6 opens the home screen / that phone app
+		if arg.begins_with("--phone="):  # dev: --phone=-1..1 opens the home screen / that phone app
 			_phone_app = int(arg.trim_prefix("--phone="))
 			toggle_phone.call_deferred()
 		if arg == "--helpbot":  # dev: once escaped, send every kind of help to the other players
@@ -889,7 +936,9 @@ func setup_map(campus: RefCounted) -> void:
 					me.watch_cctv(0))
 		if arg == "--stylepop":  # dev: style pop-ups for screenshots
 			for k in 3:
-				get_tree().create_timer(5.0 + k * 0.5).timeout.connect(on_effect.bind("style", Vector3.ZERO, ["CLOSE CALL|50", "SILENT|30", "SHOOK THEM OFF|60"][k]))
+				get_tree().create_timer(5.0 + k * 0.5).timeout.connect(on_effect.bind("style", Vector3.ZERO, ["CLOSE CALL|50", "SNEAKY|30", "SHOOK THEM OFF|60"][k]))
+		if arg == "--badgepop":  # dev: the full-marks badge pop-up for screenshots
+			get_tree().create_timer(5.0).timeout.connect(on_effect.bind("badge", Vector3.ZERO, "1|100|2"))
 		if arg == "--nohud":  # dev: clean plates for trailers
 			visible = false
 		if arg == "--navshow":  # dev: the Navigate trail to your seat, a few seconds in
@@ -1430,7 +1479,7 @@ func _refresh_mic(st: Dictionary) -> void:
 		_mic.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 		return
 	if Voice.transmitting:
-		var r: float = preload("res://scenes/world/director.gd").voice_radius(Voice.level)
+		var r: float = preload("res://scenes/world/director.gd").voice_radius(Voice.recent)  # the ~0.3 s peak: what the staff judge
 		var bars := clampi(int(r / 2.0), 1, 8)
 		var warn := ""
 		if hear:
@@ -1441,7 +1490,9 @@ func _refresh_mic(st: Dictionary) -> void:
 		_mic.text = "[%s] push to talk   [%s] quick shout" % [GameInput.key_label("push_to_talk"), shout_key]
 		_mic.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
 	else:
-		_mic.text = "Mic on (open)   [%s] quick shout" % shout_key
+		# A live level next to it, so a mic that never opens (too quiet, wrong device) is visible right here.
+		var n := int(Settings.mic_meter(Voice.level) * 8.0)
+		_mic.text = "Mic on (open)  %s%s   [%s] quick shout" % ["|".repeat(n), ".".repeat(8 - n), shout_key]
 		_mic.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
 
 
@@ -1596,7 +1647,7 @@ func _build_phone() -> void:
 	_phone_header = HBoxContainer.new()
 	_phone_header.add_theme_constant_override("separation", 8)
 	col.add_child(_phone_header)
-	var back := _phone_button("◀ Home", _show_app.bind(-1), Color(1, 1, 1, 0.85))
+	var back := _phone_button("◀ Home", _show_app.bind(-1), Color(1, 1, 1, 0.85), true, false)
 	back.add_theme_font_size_override("font_size", 12)
 	_phone_header.add_child(back)
 	_phone_title = Label.new()
@@ -1713,7 +1764,9 @@ func _phone_text(text: String, size_px := 14, color := Color.WHITE) -> Label:
 	return l
 
 
-func _phone_button(text: String, handler: Callable, color := Color("7fd0ea"), enabled := true) -> Button:
+## ack = true: a tap greys the button as "...  text" until its page is rebuilt (right for buttons in the body, rebuilt ~4x a second).
+## ack = false: for buttons that live outside the rebuilt body (header Home, Navigate's own button): a plain press, never disabled.
+func _phone_button(text: String, handler: Callable, color := Color("7fd0ea"), enabled := true, ack := true) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
@@ -1727,6 +1780,11 @@ func _phone_button(text: String, handler: Callable, color := Color("7fd0ea"), en
 		b.add_theme_color_override(state, Color("2a1a0e"))
 	b.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.4))
 	b.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS  # acts on the press itself: one tap is enough
+	if not ack:
+		b.pressed.connect(func():
+			Sfx.play("click", -4.0, 1.4)
+			handler.call())
+		return b
 	if float(_phone_busy.get(text, 0.0)) > _now():
 		# Just tapped: show it's on its way until the page has news.
 		b.text = "...  " + text
@@ -2009,7 +2067,7 @@ func _build_navigate() -> void:
 		_route_at = -100.0  # work it out again from where you stand now
 		_route_until = _now() + ROUTE_SHOW
 		_phone_tick = 0.0
-		Sfx.play("click", -6.0, 1.8), Color("b07cff"))
+		Sfx.play("click", -6.0, 1.8), Color("b07cff"), true, false)
 	_phone_body.add_child(_nav_btn)
 	_phone_text("Lights the way on the floor and on your minimap for %d s." % int(ROUTE_SHOW), 11, Color(1, 1, 1, 0.55))
 	_route_at = -100.0
@@ -2366,10 +2424,8 @@ func on_effect(kind: String, _pos: Vector3, extra: String) -> void:
 			var parts := extra.split("|")
 			if parts.size() >= 2:
 				_pop_style(parts[0], int(parts[1]))
-		"heat":
-			var h := int(extra)
-			toast("HEAT %d!  %s" % [h, Rules.HEAT_NAMES[clampi(h, 1, 4)].get_slice(": ", 1)], Color("ff9a4a"))
-			Sfx.play("alarm_spotted", -10.0, 0.7 + 0.1 * h)
+		"heat":  # "level|why"; the sound is the world's (world.gd)
+			_heat_moment(int(extra.get_slice("|", 0)), extra.get_slice("|", 1))
 		"round_intro":
 			_show_intro.call_deferred()
 		"splat":
@@ -2378,6 +2434,10 @@ func on_effect(kind: String, _pos: Vector3, extra: String) -> void:
 			_show_pa(extra)
 		"hint_proxy":
 			toast("%s is missing! [%s] answer \"Present!\" for them" % [extra, GameInput.key_label("proxy")], Color("7fe0a0"))
+		"badge":
+			var p := extra.split("|")
+			if p.size() >= 3:  # the exam badge; the quest-chain fx has extra "" (sound only, from world.gd)
+				_show_badge(int(p[0]), int(p[1]), int(p[2]))
 		"win":
 			_show_escape_moment()
 
@@ -2467,6 +2527,46 @@ func _pop_style(title: String, points: int) -> void:
 	tw.tween_callback(l.queue_free)
 
 
+## FULL MARKS: the subject's rosette pops up mid-screen for a few seconds.
+func _show_badge(subject: int, points: int, count: int) -> void:
+	subject = clampi(subject, 0, ExamGame.SUBJECTS.size() - 1)
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", _card(Color(0.08, 0.08, 0.14, 0.92), 20, 18))
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	card.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	card.grow_vertical = Control.GROW_DIRECTION_BOTH
+	card.position.y -= 90
+	_frame.add_child(card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(col)
+	var icon := TextureRect.new()
+	icon.texture = Icons.badge(subject, 140)
+	icon.custom_minimum_size = Vector2(140, 140)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(icon)
+	var title := _outlined("FULL MARKS!", 40)
+	title.add_theme_color_override("font_color", Color("ffd24a"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(title)
+	var sub := _outlined("%s merit badge   +%d%s" % [ExamGame.SUBJECTS[subject], points, ("   x%d" % count) if count > 1 else ""], 22)
+	sub.add_theme_color_override("font_color", Color("7fe0a0"))
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(sub)
+	card.resized.connect(func(): card.pivot_offset = card.size / 2.0)  # size is only known after layout
+	card.scale = Vector2(0.3, 0.3)
+	var tw := create_tween()
+	tw.tween_property(card, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(2.8)
+	tw.tween_property(card, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(card.queue_free)
+
+
 ## Start of the round: the map's trick, today's event and rules, the first quest.
 func _show_intro() -> void:
 	if is_instance_valid(_intro):
@@ -2526,6 +2626,30 @@ func _show_escape_moment() -> void:
 	tw.tween_interval(2.4)
 	tw.tween_property(_escape_big, "modulate:a", 0.0, 0.8)
 	tw.tween_callback(func(): _escape_big.visible = false)
+
+
+## The school got stricter: a banner with what changed, and a flash at the screen edge.
+func _heat_moment(h: int, why: String) -> void:
+	h = clampi(h, 2, 4)
+	_heat_title.text = Rules.HEAT_TAGS[h]
+	_heat_sub.text = ("Too much trouble today.  " if why == "trouble" else "") + str(Rules.HEAT_NOTES[h])
+	_heat_title.add_theme_color_override("font_color", HEAT_COLORS[h])
+	_heat_sub.add_theme_color_override("font_color", Color.WHITE)
+	_heat_flash = 1.0
+	for l: Label in [_heat_title, _heat_sub]:
+		l.visible = true
+		l.modulate.a = 1.0
+	_heat_title.pivot_offset = _heat_title.get_combined_minimum_size() / 2.0
+	_heat_title.scale = Vector2(2.0, 2.0)
+	if _heat_tw:
+		_heat_tw.kill()
+	_heat_tw = create_tween()
+	_heat_tw.tween_property(_heat_title, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_heat_tw.tween_interval(2.6)
+	_heat_tw.tween_callback(func():
+		_heat_title.visible = false
+		_heat_sub.visible = false)
+	print("[heat-fx] level %d (%s)" % [h, why])
 
 
 ## About to be spotted: a pulsing glow at the screen edge towards the watcher, and a
@@ -2603,10 +2727,18 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 	_refresh_cctv(me, director)
 	_update_route(director, me, st)
 	_update_warning(cam, st, delta)
-	var heat := int(director.world.get("heat", 1))
+	var heat := clampi(int(director.world.get("heat", 1)), 1, 4)
 	var ev := str(Network.round_rules.get("event", ""))
-	_heat_label.text = "HEAT %d/4%s" % [heat, "   " + Rules.event_name(ev) if ev != "" else ""]
-	_heat_label.add_theme_color_override("font_color", [Color("7fe0a0"), Color("ffd24a"), Color("ff9a4a"), Color("ff5a5a")][clampi(heat - 1, 0, 3)])
+	_heat_label.text = "HEAT %d/4  %s%s" % [heat, Rules.HEAT_TAGS[heat], "\n" + Rules.event_name(ev) if ev != "" else ""]  # the event on its own line: the card is 256 px wide
+	_heat_label.add_theme_color_override("font_color", HEAT_COLORS[heat])
+	_heat_flash = move_toward(_heat_flash, 0.0, delta * 0.8)
+	var heat_glow: float = [0.0, 0.0, 0.0, 0.15, 0.30][heat]
+	if heat >= 4:
+		heat_glow *= 0.7 + 0.3 * (0.5 + 0.5 * sin(_now() * TAU * 0.9))  # at most 0.9 Hz and low alpha: gentle pulse
+	heat_glow = maxf(heat_glow, _heat_flash * 0.8)
+	_heat_edge.visible = heat_glow > 0.01 and not debug_camera and not bool(director.round_over) and st.get("state", "") != "escaped"
+	_heat_edge_mat.set_shader_parameter("intensity", heat_glow)
+	_heat_edge_mat.set_shader_parameter("tint", HEAT_COLORS[heat])
 	_refresh_shop(director, me, st, delta)
 	var sus: float = st.sus
 	_update_danger(delta, st)
@@ -2646,6 +2778,7 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 
 	_refresh_quests(st)
 	_refresh_inventory(st)
+	_refresh_badges(st)
 
 	var alarm_left: float = float(director.world.alarm_until) - now
 	_objective.visible = st.state == "class"
@@ -2729,6 +2862,7 @@ func refresh(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node)
 ## Vignette strength follows how close you are to being caught: it creeps in
 ## with suspicion, jumps when you're chased, peaks when grabbed, and fades
 ## slowly as suspicion drops. A heartbeat pulse (and thump) speeds up with it.
+## The vignette itself is scaled by Settings > DANGER VIGNETTE (the thump is not).
 func _update_danger(delta: float, st: Dictionary) -> void:
 	var target := clampf((float(st.sus) - 25.0) / 75.0, 0.0, 1.0) * 0.6
 	match st.state:
@@ -2752,8 +2886,10 @@ func _update_danger(delta: float, st: Dictionary) -> void:
 	if _beat < before and _danger > 0.55:
 		Sfx.play("footstep", lerpf(-16.0, -4.0, _danger), 0.45)
 
-	_vignette.visible = _danger > 0.01 and not debug_camera
+	var fx: float = Settings.vignette
+	_vignette.visible = _danger * fx > 0.01 and not debug_camera  # at 0%: no screen-texture copy at all
 	_vignette_mat.set_shader_parameter("intensity", _danger)
+	_vignette_mat.set_shader_parameter("gain", fx)
 	_vignette_mat.set_shader_parameter("pulse", pulse)
 
 
@@ -2813,6 +2949,48 @@ func _refresh_inventory(st: Dictionary) -> void:
 			slot.text = "[%s]\n-" % GameInput.key_label("use_%d" % (i + 1))
 			slot.add_theme_stylebox_override("normal", _cached_card(Color(0.08, 0.08, 0.14, 0.6)))
 			slot.add_theme_color_override("font_color", Color(1, 1, 1, 0.4))
+
+
+## Merit badges earned this round (full marks), one card per subject with an xN count.
+func _refresh_badges(st: Dictionary) -> void:
+	var badges: Dictionary = st.get("badges", {})
+	var sig := str(badges)
+	if sig == _badges_seen:
+		return
+	_badges_seen = sig
+	for c in _badges.get_children():
+		c.queue_free()
+	var shown := 0
+	for k in ExamGame.SUBJECTS.size():
+		var n := int(badges.get(str(k), 0))
+		if n <= 0:
+			continue
+		shown += 1
+		var card := PanelContainer.new()
+		card.add_theme_stylebox_override("panel", _card(Color(0.08, 0.08, 0.14, 0.72), 10, 4))
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 2)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(row)
+		var icon := TextureRect.new()
+		icon.texture = Icons.badge(k, 44)
+		icon.custom_minimum_size = Vector2(44, 44)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(icon)
+		if n > 1:
+			var count := _outlined("x%d" % n, 16)
+			count.add_theme_color_override("font_color", Color("ffd24a"))
+			row.add_child(count)
+		_badges.add_child(card)
+	_badges.visible = shown > 0
+	if shown > 0:
+		print("[badges] ", sig)  # lets a headless guest's log prove the status replicated
+		_badges.pivot_offset = Vector2.ZERO
+		_badges.scale = Vector2(1.25, 1.25)
+		create_tween().tween_property(_badges, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK)
 
 
 func _refresh_markers(director: Node, me: Node, cam: Camera3D, npcs: Node, players: Node) -> void:

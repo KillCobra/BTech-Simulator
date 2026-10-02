@@ -26,17 +26,29 @@ static func warning_only(map_id: int, catch_no: int) -> bool:
 
 # --- Heat: the school gets stricter as the round goes on -------------------------------------------
 
-const HEAT_NAMES := ["", "Heat 1: teachers only", "Heat 2: the prefect and caretaker are patrolling",
-	"Heat 3: CCTV sharper, the proctor and vice principal walk the upper floors",
-	"Heat 4: LOCKDOWN. Every guard is on duty, no more chai breaks"]
+## Short tag for the HUD label and the banner title, and what changes (index = heat; only real effects).
+const HEAT_TAGS := ["", "TEACHERS ONLY", "PATROLS OUT", "CCTV SHARP", "LOCKDOWN"]
+const HEAT_NOTES := ["", "Only the teachers are watching.",
+	"Mr. Mendes and Aisha the prefect are out on patrol.",
+	"CCTV sees further and reacts faster. The proctor and the VP walk the upper floors.",
+	"Staff spot you faster and nobody takes a chai break."]
 ## Which patrols come on duty at which heat (by NPC id). Map grounds staff are always on.
 const HEAT_STAFF := {"Peon": 2, "Prefect": 2, "Proctor": 3, "VP": 3}
+## Fraction of the round at which heat 2, 3 and 4 begin by the clock alone.
+const HEAT_AT := [0.25, 0.55, 0.80]
+const HEAT_TROUBLE_GAP := 25.0   # catches/alarms closer together than this count once
+const HEAT_MIN_DWELL := 20.0     # each level lasts at least this long, so it can be felt
 
 
-## Heat from how far into the round we are, plus bumps (catches, fire alarms).
-static func heat_for(fraction: float, bumps: int, floor_heat: int) -> int:
-	var by_time := 1 + int(clampf(fraction, 0.0, 0.999) / 0.25)
-	return clampi(maxi(by_time + bumps, floor_heat), 1, 4)
+## Heat from the clock, plus ONE extra level once there have been two separate bits of trouble
+## (catches / fire alarms at least HEAT_TROUBLE_GAP apart). Never cools; lockdown is never before 55% of the round.
+static func heat_for(fraction: float, trouble: int, floor_heat: int) -> int:
+	var by_time := 1
+	for at in HEAT_AT:
+		if fraction >= float(at):
+			by_time += 1
+	var extra := 1 if trouble >= 2 else 0
+	return clampi(maxi(by_time + extra, floor_heat), 1, 4)
 
 
 # --- Quest chain -----------------------------------------------------------------------------------
@@ -55,12 +67,14 @@ const CHAIN_BONUS := 200   # score for finishing the chain
 
 const STYLE := {
 	"close_call": ["CLOSE CALL", 50],
-	"silent": ["SILENT", 30],
+	"silent": ["SNEAKY", 30],
 	"proxy": ["PROXY", 20],
 	"shake_off": ["SHOOK THEM OFF", 60],
 	"quest": ["QUEST", 25],
 }
-const SILENT_METRES := 25.0  # walked this far outside class without being seen = SILENT
+const SILENT_METRES := 40.0  # on foot, out of class and unseen this far = one SNEAKY (about 11 s of walking)
+const SILENT_COOLDOWN := 45.0  # seconds after one before the next can start counting
+const SILENT_MAX := 4  # per player per round (4 x 30 = 120, less than one quest)
 const CLASS_ESCAPE_BONUS := 0.5  # everyone out (2+ players, class mode): +50% score
 const RACE_WIN_BONUS := 300
 

@@ -303,6 +303,21 @@ func _build_sfx() -> void:
 	_noise(b, 0.0, 1.2, 0.35, 0.9, 3.0)
 	streams["crash"] = _wav(b)
 
+	# Heat stinger (levels 2 and 3): two heavy low-mid notes. Kept at 140 Hz and up so laptop and phone speakers play it.
+	b = _buf(0.9)
+	_tone(b, 0.0, 0.5, 196.0, 185.0, 0.45, TRIANGLE, 3.0, 0.6)
+	_tone(b, 0.22, 0.65, 147.0, 138.6, 0.45, TRIANGLE, 2.5, 0.6)
+	_noise(b, 0.0, 0.12, 0.2, 0.3, 30.0)
+	streams["heat_hit"] = _wav(b)
+	# Lockdown klaxon: two harsh, saturated blasts.
+	b = _buf(2.0)
+	for blast in 2:
+		_tone(b, blast * 0.95, 0.8, 233.1, 220.0, 0.5, SAW, 0.0, 0.35)
+	for j in b.size():
+		b[j] = tanh(2.2 * b[j]) * 0.6
+	streams["klaxon"] = _wav(b)
+	streams["drone"] = _wav(_make_drone(), true)
+
 
 func _make_bell() -> PackedFloat32Array:
 	# Electric bell: clapper hammering a gong at ~22 Hz.
@@ -333,6 +348,17 @@ func _make_siren() -> PackedFloat32Array:
 		var f := 600.0 + 500.0 * (0.5 - 0.5 * cos(TAU * t / dur))
 		b[i] = tanh(2.5 * sin(TAU * phase)) * 0.3
 		phase = fposmod(phase + f / RATE, 1.0)
+	return b
+
+
+func _make_drone() -> PackedFloat32Array:
+	# Lockdown bed: 110 Hz and harmonics with a 1 Hz throb. 2 s holds whole cycles of every partial
+	# (and of the throb), so it loops click-free.
+	var b := _buf(2.0)
+	for i in b.size():
+		var t := float(i) / RATE
+		var tone := sin(TAU * 110.0 * t) * 0.4 + sin(TAU * 220.0 * t) * 0.3 + sin(TAU * 330.0 * t) * 0.2 + sin(TAU * 440.0 * t) * 0.1
+		b[i] = tone * (0.65 + 0.35 * sin(TAU * t)) * 0.5
 	return b
 
 

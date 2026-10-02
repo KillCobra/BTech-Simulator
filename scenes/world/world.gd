@@ -122,6 +122,7 @@ func _process(delta: float) -> void:
 	_hud.refresh(_director, me, get_viewport().get_camera_3d(), _npcs_root, _players_root)
 	_update_rain()
 	_update_props()
+	_update_heat_look(delta)
 	_update_audio()
 	if me and OS.get_cmdline_user_args().has("--trace") and Engine.get_process_frames() % 30 == 0:
 		print("[trace] pos=%s vel=%s floor=%s" % [me.global_position, me.velocity, me.is_on_floor()])
@@ -167,6 +168,31 @@ func _apply_round_event() -> void:
 			add_child(_rain)
 
 
+## The light warms and reddens, and the colour drains a little, as the heat rises. Derived from the
+## replicated heat, so a late joiner sees the right look at once. (adjustment_enabled is on in _build_environment.)
+const HEAT_SUN := [Color("ffe9c4"), Color("ffe9c4"), Color("ffdcae"), Color("ffc58c"), Color("ff9a78")]      # index = heat; 1 = the default look
+const HEAT_AMBIENT := [Color("fff0dc"), Color("fff0dc"), Color("ffeadb"), Color("ffd8bc"), Color("ffb8a0")]
+const HEAT_SAT := [1.12, 1.12, 1.12, 1.04, 0.92]
+var _heat_k := -1.0  # the look's heat, eased between levels (-1: not applied yet, so the first frame snaps)
+
+
+func _update_heat_look(delta: float) -> void:
+	var target := float(clampi(int(_director.world.get("heat", 1)), 1, 4))
+	if _heat_k == target:
+		return  # settled: no per-frame Environment or Sun writes
+	_heat_k = target if _heat_k < 0.0 else move_toward(_heat_k, target, delta * 0.5)  # about 2 s per level
+	var lo := int(_heat_k)
+	var hi := mini(lo + 1, 4)
+	var f := _heat_k - float(lo)
+	var sun0: Color = HEAT_SUN[lo]
+	var sun1: Color = HEAT_SUN[hi]
+	var amb0: Color = HEAT_AMBIENT[lo]
+	var amb1: Color = HEAT_AMBIENT[hi]
+	_sun.light_color = sun0.lerp(sun1, f)
+	_env.ambient_light_color = amb0.lerp(amb1, f)
+	_env.adjustment_saturation = lerpf(float(HEAT_SAT[lo]), float(HEAT_SAT[hi]), f)
+
+
 ## Rain follows the camera, and stops when there's a roof overhead.
 func _update_rain() -> void:
 	if _rain == null:
@@ -195,10 +221,11 @@ func _update_props() -> void:
 	else:
 		_prop_clock += get_process_delta_time()
 	var t: float = _prop_clock
+	var sharp: bool = int(_director.world.get("heat", 1)) >= 3  # heat 3+: the CCTV LEDs blink faster
 	for cam in campus.cctv:
 		var node: Node3D = cam.node
 		node.rotation.y = _director.cctv_yaw(cam, t)
-		node.get_child(0).get_node("Led").visible = int(t * 2.0) % 2 == 0 and not _power_cut
+		node.get_child(0).get_node("Led").visible = int(t * (6.0 if sharp else 2.0)) % 2 == 0 and not _power_cut
 	_update_coins(t)
 	_update_puddles(t)
 	var gate_open: bool = float(_director.world.gate_until) > t
@@ -248,6 +275,11 @@ func _update_audio() -> void:
 	else:
 		Sfx.stop_loop("alarm")
 	var st: Dictionary = _director.status.get(multiplayer.get_unique_id(), {})
+	# Lockdown (heat 4): a low throbbing drone under everything, until you are out or the round ends.
+	if int(_director.world.get("heat", 1)) >= 4 and not _director.round_over and st.get("state", "") != "escaped":
+		Sfx.start_loop("drone", "heat", -14.0)
+	else:
+		Sfx.stop_loop("heat")
 	if _director.round_over:
 		Sfx.set_music("")
 	elif st.get("state", "") == "chased":
@@ -284,6 +316,12 @@ func _on_effect(kind: String, pos: Vector3, extra: String) -> void:
 			Sfx.play("win")
 		"caught":
 			Sfx.play("caught")
+		"heat":  # "level|why": a low stinger, and at lockdown the klaxon (the drone starts in _update_audio)
+			var lvl := int(extra.get_slice("|", 0))
+			if lvl >= 4:
+				Sfx.play("klaxon", -2.0)
+			else:
+				Sfx.play("heat_hit", -2.0, 0.85 + 0.1 * lvl)
 		"whistle":
 			Sfx.play_at("whistle", pos, 2.0)
 			if extra == str(multiplayer.get_unique_id()):

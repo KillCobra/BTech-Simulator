@@ -44,13 +44,13 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--rounds="):  # dev: pretend to have played this many rounds
 			Network.local_info.rounds = int(arg.trim_prefix("--rounds="))
-	_fit_window()
 	_show_menu("")
 	# Draw the menu first, then go fullscreen (if chosen), then build the map behind it.
 	# Building takes a moment; the window mustn't sit half-drawn meanwhile (the old
-	# splash in a corner and a black slab round it).
+	# splash in a corner and a black slab round it). Settings sized the window before
+	# the first frame; window_ready() waits for the fullscreen switch to settle.
 	await _drawn()
-	Settings.window_ready()
+	await Settings.window_ready()
 	await _drawn()
 	_load_world(true)
 	_apply_dev_args()
@@ -62,27 +62,6 @@ func _drawn() -> void:
 		await get_tree().process_frame
 	else:
 		await RenderingServer.frame_post_draw
-
-
-## The menus are laid out for 1280 x 880 (the project's base size; the UI scales with
-## the window). The window opens at its project size straight away, so nothing jumps
-## after the splash; it only shrinks here on a screen too small for it.
-const WINDOW_SIZE := Vector2i(1280, 880)
-
-
-func _fit_window() -> void:
-	if DisplayServer.get_name() == "headless" or Settings.fullscreen \
-			or DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
-		return
-	var screen := DisplayServer.window_get_current_screen()
-	var free := DisplayServer.screen_get_usable_rect(screen)
-	var size := DisplayServer.window_get_size()
-	if size.x <= free.size.x and size.y <= free.size.y - 40:
-		return
-	var fit := minf(float(free.size.x) / size.x, float(free.size.y - 40) / size.y)
-	var want := Vector2i(Vector2(size) * fit)
-	DisplayServer.window_set_size(want)
-	DisplayServer.window_set_position(free.position + (free.size - want) / 2)
 
 
 ## Called by the end-of-round screen.
@@ -343,10 +322,12 @@ func _close_pause() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
-func _show_settings_in(panel: PanelContainer, back: Callable) -> void:
+## `voice_only`: open straight on the VOICE & MIC page (the lobby's MIC button); DONE there calls `back`.
+func _show_settings_in(panel: PanelContainer, back: Callable, voice_only := false) -> void:
 	for child in panel.get_children():
 		child.queue_free()
 	var settings: VBoxContainer = SettingsPanel.new()
+	settings.voice_only = voice_only
 	settings.closed.connect(back)
 	panel.add_child(settings)
 
@@ -548,6 +529,9 @@ func _show_lobby() -> void:
 		_ready_btn = _button("I'M READY", func(): Network.set_ready(not Network.is_ready(multiplayer.get_unique_id())), Color("7fe0a0"))
 		buttons.add_child(_ready_btn)
 	buttons.add_child(_button("LEAVE", _on_leave_lobby, Color("e7d2aa")))
+	# The mic is live here, so this is where players notice it misbehaving: straight to VOICE & MIC, DONE comes back.
+	var lobby_panel: PanelContainer = box.get_parent()  # same pattern as _show_menu
+	buttons.add_child(_button("MIC", func(): _show_settings_in(lobby_panel, _show_lobby, true), Color("b9e6a0")))
 	box.add_child(buttons)
 
 	_build_creator()
@@ -1257,6 +1241,7 @@ func _return_to_menu(message: String) -> void:
 	Sfx.set_music("")
 	Sfx.set_ambience(false)
 	Sfx.stop_loop("alarm")
+	Sfx.stop_loop("heat")
 	Network.leave()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if _world == null or not _world.preview or _world.preview_map != -1:
@@ -1333,9 +1318,6 @@ func _new_screen() -> VBoxContainer:
 	var logo := Label.new()
 	logo.text = "BUNK\nMASTER"
 	logo.add_theme_font_size_override("font_size", 76)
-	if get_viewport().get_visible_rect().size.y < WINDOW_SIZE.y - 20:  # short screen: one line leaves room
-		logo.text = "BUNK MASTER"
-		logo.add_theme_font_size_override("font_size", 46)
 	logo.add_theme_color_override("font_color", GOLD)
 	logo.add_theme_color_override("font_outline_color", INK)
 	logo.add_theme_constant_override("outline_size", 22)

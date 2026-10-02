@@ -10,6 +10,7 @@ const PANEL := Color(0.09, 0.09, 0.16, 0.84)
 const TRACK := Color(1, 1, 1, 0.14)
 
 var _s: Node ## The Settings autoload (looked up by path so this parses without it).
+var _display: OptionButton ## DISPLAY: fullscreen / windowed (auto) / windowed at a size that fits this screen.
 
 
 func _ready() -> void:
@@ -39,9 +40,26 @@ func _ready() -> void:
 		cols.add_child(col)
 	left.add_child(_slider_row("MOUSE SENSITIVITY", "mouse_sensitivity", 0.2, 3.0, 0.05, 1.0, "%.2fx"))
 	left.add_child(_slider_row("FIELD OF VIEW", "fov", 60, 100, 1, 1.0, "%d°"))
+	left.add_child(_slider_row("DANGER VIGNETTE", "vignette", 0, 200, 5, 100.0, "%d%%"))
 	right.add_child(_slider_row("MASTER VOLUME", "master_volume", 0, 100, 1, 100.0, "%d%%"))
 	right.add_child(_slider_row("MUSIC VOLUME", "music_volume", 0, 100, 1, 100.0, "%d%%"))
 	right.add_child(_slider_row("SFX VOLUME", "sfx_volume", 0, 100, 1, 100.0, "%d%%"))
+
+	# DISPLAY takes the left column's last slot; GRAPHICS and HUD SIZE share one row under the right column's
+	# sliders, so the panel gains no height (the menu column is nearly full on a 1280 x 880 screen).
+	_display = OptionButton.new()
+	_display.add_item("Fullscreen", 0)
+	_display.add_item("Windowed (auto size)", 1)
+	var sizes: Array = _s.WINDOW_SIZES
+	for k in sizes.size():
+		var px: Vector2i = sizes[k]
+		if _s.window_fits(px):
+			_display.add_item("Windowed %d x %d" % [px.x, px.y], 2 + k)
+	_sync_display()
+	_display.item_selected.connect(func(i: int): _s.set_display(_display.get_item_id(i)))
+	_style_picker(_display)
+	left.add_child(_field("DISPLAY  (F11 OR ALT+ENTER)", _display))
+	_s.changed.connect(_sync_display)  # a method, not a lambda: auto-disconnects when the panel is freed; stays right after F11
 
 	var quality := OptionButton.new()
 	for item in ["Low", "Medium", "High"]:
@@ -49,7 +67,6 @@ func _ready() -> void:
 	quality.select(int(_s.quality))
 	quality.item_selected.connect(func(i: int): _s.set_value("quality", i))
 	_style_picker(quality)
-	left.add_child(_field("GRAPHICS", quality))
 
 	var hud_size := OptionButton.new()
 	for item in ["1  Small", "2  Normal", "3  Large"]:
@@ -57,18 +74,20 @@ func _ready() -> void:
 	hud_size.select(int(_s.ui_size) - 1)
 	hud_size.item_selected.connect(func(i: int): _s.set_value("ui_size", i + 1))
 	_style_picker(hud_size)
-	right.add_child(_field("HUD SIZE (IN GAME)", hud_size))
 
-	var full := CheckButton.new()
-	full.text = "FULLSCREEN"
-	full.button_pressed = bool(_s.fullscreen)
-	full.focus_mode = Control.FOCUS_NONE
-	full.toggled.connect(func(on: bool): _s.set_value("fullscreen", on))
-	_style_toggle(full)
+	var pickers := HBoxContainer.new()
+	pickers.add_theme_constant_override("separation", 10)
+	right.add_child(pickers)
+	var quality_field := _field("GRAPHICS", quality)
+	var hud_field := _field("HUD SIZE (IN GAME)", hud_size)
+	quality_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hud_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pickers.add_child(quality_field)
+	pickers.add_child(hud_field)
+
 	var toggles := HBoxContainer.new()
 	toggles.add_theme_constant_override("separation", 28)
 	add_child(toggles)
-	toggles.add_child(full)
 
 	var smooth := CheckButton.new()
 	smooth.text = "SMOOTH EDGES (NO SHIMMER)"
@@ -84,16 +103,24 @@ func _ready() -> void:
 	vision.focus_mode = Control.FOCUS_NONE
 	vision.toggled.connect(func(on: bool): _s.set_value("show_vision", on))
 	_style_toggle(vision)
-	var vision_row := HBoxContainer.new()  # keeps the switch next to its label
-	vision_row.add_child(vision)
-	add_child(vision_row)
+	toggles.add_child(vision)
 
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 12)
 	add_child(buttons)
 	buttons.add_child(_button("CONTROLS", _show_controls, Color("9fd8ff")))
-	buttons.add_child(_button("VOICE", _show_voice, Color("b9e6a0")))
+	buttons.add_child(_button("VOICE & MIC", _show_voice, Color("b9e6a0")))
 	buttons.add_child(_button("BACK", closed.emit, Color("e7d2aa")))
+	if voice_only:  # the lobby's MIC button: straight to the voice page
+		_show_voice()
+
+
+## Shows the real window state (F11 or the macOS green button can change it behind the picker's back).
+func _sync_display() -> void:
+	if not is_instance_valid(_display):
+		return
+	var i: int = _display.get_item_index(int(_s.display_id()))
+	_display.select(i if i >= 0 else 1)  # a saved size that doesn't fit this screen shows as Auto
 
 
 # --- Controls (key bindings) -------------------------------------------------------------------
@@ -212,7 +239,19 @@ var _voice_page: VBoxContainer
 var _meter_fill: ColorRect
 var _meter_gate: ColorRect
 const METER_W := 380.0
-const METER_MAX := 0.12  # RMS at the right-hand end of the mic meter
+const VOICE_HINT := "Stay quiet: the bar stays left of the white line. Talk: it goes past it. Jumpy with nobody talking? Use headphones or lower the sensitivity. Can't be heard? Raise it, or press AUTO-SET."
+var voice_only := false  ## opened by the lobby's MIC button: straight to this page; DONE closes the whole panel
+var _sens_slider: HSlider
+var _sens_label: Label
+var _voice_hint: Label
+var _meter_v := 0.0            # the bar as drawn: jumps up with your voice, eases down
+var _cal := 0                  # AUTO-SET: 0 idle, 1 listening to the room, 2 listening to you
+var _cal_t := 0.0
+var _cal_last := -1.0
+var _cal_idle := 0.0           # seconds since the last reading counted
+var _cal_peak := 0.0           # loudest reading of the whole run (all zero: the mic gives no sound at all)
+var _cal_floor_db := -100.0
+var _cal_samples: Array = []
 
 
 func _show_voice() -> void:
@@ -229,7 +268,7 @@ func _show_voice() -> void:
 	heading.add_theme_font_size_override("font_size", 28)
 	heading.add_theme_color_override("font_color", GOLD)
 	_voice_page.add_child(heading)
-	var about := _caption("Teachers hear HOW LOUD you are (never what you say): whisper when you hide. Friends: choose below whether their voices fade with distance or you hear everyone at full volume. Wear headphones so your mic doesn't pick up the game.")
+	var about := _caption("Teachers hear HOW LOUD you are (never what you say): whisper when you hide. Wear headphones.")
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD
 	about.custom_minimum_size.x = 600
 	_voice_page.add_child(about)
@@ -266,13 +305,16 @@ func _show_voice() -> void:
 	var sliders := HBoxContainer.new()
 	sliders.add_theme_constant_override("separation", 20)
 	_voice_page.add_child(sliders)
-	var gate := _slider_row("OPEN MIC STARTS AT", "mic_gate", 2, 80, 1, 1000.0, "%d")
+	var gate := _sensitivity_row()
 	gate.custom_minimum_size.x = 300
 	sliders.add_child(gate)
 	var vol := _slider_row("FRIENDS' VOICES", "voice_volume", 0, 100, 1, 100.0, "%d%%")
 	vol.custom_minimum_size.x = 300
 	sliders.add_child(vol)
-	_voice_page.add_child(_caption("SAY SOMETHING: the bar should cross the white line when you talk, not when you're quiet."))
+	_voice_hint = _caption(VOICE_HINT)
+	_voice_hint.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_voice_hint.custom_minimum_size = Vector2(600, 81)  # 2 lines (Jersey 10 at 13 px): every AUTO-SET message fits, so the page doesn't jump
+	_voice_page.add_child(_voice_hint)
 	var meter := ColorRect.new()
 	meter.color = TRACK
 	meter.custom_minimum_size = Vector2(METER_W, 16)
@@ -288,11 +330,42 @@ func _show_voice() -> void:
 	_meter_gate.position.y = -3
 	meter.add_child(_meter_gate)
 	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 12)
+	buttons.add_child(_button("AUTO-SET", _start_calibration, Color("9fd8ff")))
 	buttons.add_child(_button("DONE", _close_voice, Color("e7d2aa")))
 	_voice_page.add_child(buttons)
 
 
-func _process(_delta: float) -> void:
+## Players see sensitivity 1-10 (10 hears a whisper); the stored `mic_gate` is the RMS behind it.
+func _sensitivity_row() -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	var top := HBoxContainer.new()
+	var label := _caption("MIC SENSITIVITY")
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(label)
+	_sens_label = Label.new()
+	_sens_label.add_theme_font_size_override("font_size", 15)
+	_sens_label.add_theme_color_override("font_color", GOLD)
+	top.add_child(_sens_label)
+	box.add_child(top)
+	_sens_slider = HSlider.new()
+	_sens_slider.min_value = 1
+	_sens_slider.max_value = 10
+	_sens_slider.step = 1
+	_sens_slider.custom_minimum_size = Vector2(0, 30)
+	_sens_slider.focus_mode = Control.FOCUS_NONE
+	_style_slider(_sens_slider)
+	_sens_slider.value = _s.sensitivity_for_gate(float(_s.mic_gate))  # snaps to a whole step
+	_sens_label.text = "%d / 10" % int(_sens_slider.value)
+	_sens_slider.value_changed.connect(func(v: float):
+		_sens_label.text = "%d / 10" % int(v)
+		_s.set_value("mic_gate", _s.gate_for_sensitivity(v)))
+	box.add_child(_sens_slider)
+	return box
+
+
+func _process(delta: float) -> void:
 	if not is_instance_valid(_voice_page) or not is_instance_valid(_meter_fill):
 		return
 	var voice: Node = get_node_or_null("/root/Voice")
@@ -300,18 +373,105 @@ func _process(_delta: float) -> void:
 		return
 	# The meter reads the mic even out of a session (the Voice autoload always listens).
 	var lvl: float = voice.level
-	_meter_fill.size.x = METER_W * clampf(lvl / METER_MAX, 0.0, 1.0)
+	var target: float = _s.mic_meter(lvl)
+	_meter_v = target if target > _meter_v else lerpf(_meter_v, target, minf(1.0, delta * 8.0))  # up at once, down in ~0.15 s: readable, not jittery
+	_meter_fill.size.x = METER_W * _meter_v
 	_meter_fill.color = Color("7fe0a0") if lvl >= float(_s.mic_gate) else Color(1, 1, 1, 0.35)
-	_meter_gate.position.x = METER_W * clampf(float(_s.mic_gate) / METER_MAX, 0.0, 1.0)
+	var gate_x: float = _s.mic_meter(float(_s.mic_gate))
+	_meter_gate.position.x = METER_W * gate_x - 1.5
+	if _cal != 0:
+		_calibrate(delta, lvl)
+
+
+# --- AUTO-SET: stay quiet for 2 s, then talk for 4 s; the gate goes between the room and your voice. ---
+# The music and every bus are left alone on purpose: calibrating with the speakers on teaches the gate about their bleed.
+
+func _percentile(a: Array, p: float) -> float:
+	if a.is_empty():
+		return 0.0
+	var sorted := a.duplicate()
+	sorted.sort()
+	return float(sorted[clampi(int(sorted.size() * p), 0, sorted.size() - 1)])
+
+
+func _start_calibration() -> void:
+	var voice: Node = get_node_or_null("/root/Voice")
+	if _cal != 0 or voice == null:
+		return
+	if not voice.mic_ok:
+		_voice_hint.text = "No microphone found. Plug one in and pick it under MICROPHONE."
+		return
+	_cal = 1
+	_cal_t = 0.0
+	_cal_last = -1.0
+	_cal_idle = 0.0
+	_cal_peak = 0.0
+	_cal_samples.clear()
+	_voice_hint.text = "Step 1 of 2: stay quiet for a moment..."
+
+
+func _calibrate(delta: float, lvl: float) -> void:
+	_cal_t += delta
+	_cal_peak = maxf(_cal_peak, lvl)
+	# The level changes every 20 ms: count each reading once at any frame rate (a digitally silent mic never changes: every 40 ms then).
+	_cal_idle += delta
+	var fresh := lvl != _cal_last or _cal_idle >= 0.04
+	_cal_last = lvl
+	if fresh:
+		_cal_idle = 0.0
+	if _cal == 1:
+		if fresh and _cal_t > 0.5:  # skip the click on the button
+			_cal_samples.append(lvl)
+		if _cal_t >= 2.5:
+			_cal_floor_db = maxf(float(_s.mic_db(_percentile(_cal_samples, 0.9))), float(_s.METER_DB_MIN))  # a noise-gated mic reads dead silence: floor it
+			_cal_samples.clear()
+			_cal = 2
+			_cal_t = 0.0
+			_voice_hint.text = "Step 2 of 2: now say it like you would in class:  \"Sir, may I go to the washroom?\""
+	elif _cal == 2:
+		if fresh and _cal_t > 0.7:  # reaction time
+			_cal_samples.append(lvl)
+		if _cal_t >= 4.5:
+			_finish_calibration()
+
+
+func _finish_calibration() -> void:
+	_cal = 0
+	var voiced: Array = []
+	for v in _cal_samples:
+		if float(_s.mic_db(float(v))) > _cal_floor_db + 6.0:
+			voiced.append(v)
+	_cal_samples.clear()
+	if _cal_peak < 0.0002:  # not a whisper of signal in 6 s: nothing reaches the game
+		_voice_hint.text = "The mic isn't sending any sound. Check MICROPHONE above, and your computer's microphone permission."
+		return
+	if voiced.size() < 15:  # under ~0.3 s of voice
+		_voice_hint.text = "Couldn't hear you. Press AUTO-SET again and talk as soon as step 2 starts, or raise your mic volume in your computer's sound settings."
+		return
+	var speech_db: float = _s.mic_db(_percentile(voiced, 0.5))
+	var gap: float = speech_db - _cal_floor_db
+	if gap < 10.0:
+		_voice_hint.text = "Your voice is only %d dB above the room noise. Move closer, raise your mic volume in your computer's sound settings, use a headset or push to talk. Sensitivity left as it was." % int(gap)
+		return
+	# Halfway between the room and your voice (in dB), at least 6 dB over the room and 4 dB under your voice.
+	var gate_db := clampf(_cal_floor_db + clampf(gap * 0.5, 6.0, gap - 4.0), -54.0, -22.0)
+	_s.set_value("mic_gate", pow(10.0, gate_db / 20.0))
+	var steps: float = _s.sensitivity_for_gate(float(_s.mic_gate))
+	if is_instance_valid(_sens_slider):
+		_sens_slider.set_value_no_signal(steps)
+		_sens_label.text = "%d / 10" % int(_sens_slider.value)
+	_voice_hint.text = "Done! Sensitivity set to %d / 10: the bar now passes the white line only when you talk. On speakers? Do this at the volume you'll play at." % int(round(steps))
 
 
 func _exit_tree() -> void:
+	_cal = 0
 	var voice: Node = get_node_or_null("/root/Voice")
 	if voice and is_instance_valid(_voice_page):
 		voice.monitoring = false
 
 
 func _close_voice() -> void:
+	_cal = 0
 	var voice: Node = get_node_or_null("/root/Voice")
 	if voice:
 		voice.monitoring = false
@@ -319,6 +479,9 @@ func _close_voice() -> void:
 		_voice_page.queue_free()
 		remove_child(_voice_page)
 	_voice_page = null
+	if voice_only:  # opened from the lobby: DONE leaves the settings altogether
+		closed.emit()
+		return
 	for child in get_children():
 		child.visible = true
 

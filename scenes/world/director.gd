@@ -115,7 +115,7 @@ var feed := []    # [{"t": elapsed, "text": String}]
 var marks := []   # [{"pos": Vector3, "npc": String, "by": String, "until": float}]
 var world := {"alarm_until": -100.0, "alarm_ready": 0.0, "gate_until": -100.0, "taken": {}, "stash": {},
 	"period": 0, "periods": 3, "period_len": 160.0, "period_start": 0.0, "passing_until": -100.0, "coins": [],
-	"heat": 1, "heat_bumps": 0, "party_at": -1.0, "party_until": -100.0, "race_winner": -1, "race_end_at": -1.0}
+	"heat": 1, "party_at": -1.0, "party_until": -100.0, "race_winner": -1, "race_end_at": -1.0}
 ## Chaos on the floor: wet patches, smoke, phone calls, kicked buckets, held doors. Sent
 ## reliably when it changes (the small `world` dict above must fit one unreliable packet).
 var things := {"puddles": [], "clouds": [], "calls": [], "bucket_ready": {}, "held": {}}
@@ -153,6 +153,13 @@ var _coin_due: Array[float] = []  # elapsed time when a picked-up coin comes bac
 var _started := false
 var _rng := RandomNumberGenerator.new()
 var _pending_staff: Array = []  # [heat, Callable]: patrols that come on duty as the heat rises
+var _trouble := 0           # catches / fire alarms that counted toward heat (see _trouble_event)
+var _trouble_at := -100.0   # elapsed time of the last one that counted
+var _heat_ok_at := 0.0      # elapsed time before which the heat may not rise again (dwell, catch settle)
+var _heat_ramp := 0.0       # dev: --heat-ramp=S, a heat level every S seconds
+var _heat_pa_at := -1.0     # elapsed time to read out the heat PA, once the banner is gone (-1 = none waiting)
+var _heat_pa_text := ""
+const HEAT_PA_DELAY := 3.4  # the HUD banner takes 0.35 s to pop in and holds 2.6 s; the PA box would cover it
 var _rules: Dictionary = {}     # this round's rules (Network.round_rules)
 ## Moments: everything notable that happened to someone ({t, id, kind, other}). They
 ## feed the end-of-round awards, and a dev report of stretches where nothing happened.
@@ -208,6 +215,8 @@ func start(seats: Dictionary, minutes: float) -> void:
 	world.passing_time = _passing_time()
 	_schedule_period(0)
 	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--heat-ramp="):  # dev: heat rises one level every S seconds (see _update_heat)
+			_heat_ramp = float(arg.trim_prefix("--heat-ramp="))
 		if arg.begins_with("--question="):  # dev: the nearest staff grabs and questions the host after N s
 			get_tree().create_timer(float(arg.trim_prefix("--question="))).timeout.connect(func():
 				var me: Node3D = players_root.get_node_or_null("1")
@@ -555,7 +564,7 @@ func _new_status(id: int) -> Dictionary:
 	return {"sus": 0.0, "state": "class", "seen": false, "caught": 0, "spotted": 0, "time": 0.0, "timer": 0.0,
 		"bunking": false, "items": items, "quests": quests, "pass_until": -1.0, "gate_pass_until": -1.0, "score": 0,
 		"catches": 0, "warnings": 0, "chain": false, "style": 0, "peak": false, "calm_t": 0.0,
-		"silent_m": 0.0, "last_pos": Vector3.ZERO, "unseen_run": 0.0, "longest_unseen": 0.0, "closest": 99.0,
+		"silent_m": 0.0, "silent_ready": 0.0, "silent_n": 0, "last_pos": Vector3.ZERO, "unseen_run": 0.0, "longest_unseen": 0.0, "closest": 99.0,
 		"closest_who": "", "best_distraction": 0, "present_period": -1, "watch_pos": Vector3.ZERO,
 		"grabbed": false, "shoves": 0, "seat_idx": 0, "seat": Vector3.ZERO, "strikes": 0, "good_time": 0.0,
 		"returning": false, "return_until": -1.0, "essay_line": 0, "exam_key": "", "exam_total": 0, "exams": 0,
@@ -563,7 +572,7 @@ func _new_status(id: int) -> Dictionary:
 		"upgrades": {"pass": 0},
 		"exam_in_at": -1.0, "exam_paper": "", "exam_deadline": -1.0, "wait_since": -1.0,
 		"settle_until": -1.0, "had_pass": false, "pass_late": false, "was_in_room": true,
-		"helper_answers": -1, "helper_from": "", "assists": 0, "helped": {}}
+		"helper_answers": -1, "helper_from": "", "assists": 0, "helped": {}, "badges": {}}
 
 
 ## Something happened to `id` (with `other` involved, a peer id or -1).
@@ -773,6 +782,7 @@ func _style(id: int, kind: String) -> void:
 	var st: Dictionary = status[id]
 	var pts: int = int(Rules.STYLE[kind][1])
 	st.style = int(st.style) + pts
+	print("[%.1f] style: %s +%d -> %s (total %d)" % [elapsed, kind, pts, _name(id), int(st.style)])
 	_fx.rpc_id(id, "style", Vector3.ZERO, "%s|%d" % [Rules.STYLE[kind][0], pts])
 
 
@@ -1437,7 +1447,14 @@ func _on_exam(id: int, p: Node3D, room: int, exam_id: int, score: int) -> void:
 	if score >= 20:
 		_pay(id, score / 5, "for the test")
 	if score == 100:
-		_log("%s got full marks in %s!" % [_name(id), SUBJECTS[room]])
+		# Full marks: a merit badge for the subject (they stack). The pop-up and shelf are the HUD's.
+		var badges: Dictionary = st.badges
+		var n := int(badges.get(str(room), 0)) + 1
+		badges[str(room)] = n
+		var pts := 100 * (2 if _event() == "exam_week" else 1)  # what this test really added to exam_total
+		_fx.rpc_id(id, "badge", Vector3.ZERO, "%d|%d|%d" % [room, pts, n])
+		_tell(id, "MERIT BADGE: %s!%s" % [SUBJECTS[room], ("  (x%d)" % n) if n > 1 else ""], Color("ffd24a"))
+		_log("%s earned the %s merit badge (full marks)!" % [_name(id), SUBJECTS[room]])
 
 
 ## Detention lines: copy the sentence exactly, get out sooner.
@@ -1671,7 +1688,7 @@ func _update_balls() -> void:
 func _start_alarm() -> void:
 	world.alarm_until = elapsed + ALARM_TIME
 	world.alarm_ready = elapsed + ALARM_COOLDOWN
-	world.heat_bumps = int(world.heat_bumps) + 1
+	_trouble_event()
 	_gather(campus.assembly, "Fire drill! Everyone out!")
 	for id in status:
 		_release(id, "FIRE DRILL! The principal ran out, and so did you. Walk back to class!")
@@ -2226,9 +2243,9 @@ const PA_LINES := [
 ]
 const PA_CAUGHT := ["Will %s please report to the principal's office. Immediately.", "%s to the principal's office, please. Bring an excuse.",
 	"Attention: %s has been caught. Again. Let this be a lesson to the rest of you."]
-const PA_HEAT := ["", "", "Staff are reminded to patrol the corridors. Students are reminded that they are being watched.",
-	"Security is increased. The proctor and the vice principal are now walking the upper floors.",
-	"LOCKDOWN. All gates are watched. All chai breaks are cancelled. Everyone: sit down."]
+const PA_HEAT := ["", "", "Mr. Mendes and Aisha the prefect are now on patrol. Students are reminded that they are being watched.",
+	"Security is increased. The CCTV has been cleaned, and the proctor and the vice principal are walking the upper floors.",
+	"LOCKDOWN. Staff are on high alert and all chai breaks are cancelled. Everyone: sit down."]
 const PA_SPOTS := [["canteen", "Attention all staff: a parent is waiting for you at the canteen. A very angry parent."],
 	["assembly", "Attention staff: free cake on the assembly ground. First come, first served."],
 	["staffroom", "Emergency staff meeting in the staff room. Now. Bring biscuits."]]
@@ -2795,7 +2812,7 @@ func _update_player(id: int, p: Node3D, delta: float) -> void:
 					_fx_all("bell", Vector3.ZERO, "")
 
 
-## Close calls, silent walks and time unseen (all only while out of class, not during the bell).
+## Close calls, sneaky walks and time unseen (all only while out of class, not during the bell).
 func _style_step(id: int, p: Node3D, st: Dictionary, delta: float) -> void:
 	var pos := p.global_position
 	var moved := Vector2(pos.x - st.last_pos.x, pos.z - st.last_pos.z).length() if st.last_pos != Vector3.ZERO else 0.0
@@ -2816,18 +2833,21 @@ func _style_step(id: int, p: Node3D, st: Dictionary, delta: float) -> void:
 				_moment("close_call", id)
 			st.peak_sus = 0.0
 	var out: bool = st.state == "class" and campus.room_of(pos) != current_room(id) and elapsed > float(world.passing_until) \
-			and elapsed > float(st.pass_until)
+			and elapsed > float(st.pass_until) and elapsed > float(st.return_until)
 	if out and not st.seen and not p.hidden:
 		st.unseen_run = float(st.unseen_run) + delta
 		st.longest_unseen = maxf(float(st.longest_unseen), float(st.unseen_run))
-		st.silent_m = float(st.silent_m) + minf(moved, 1.0)
-		if st.silent_m >= Rules.SILENT_METRES:
-			st.silent_m = 0.0
-			_style(id, "silent")
+		# SNEAKY: real steps only (a sprint is heard; a jump bigger than a sprint step is a teleport or snap), a few per round, spaced out.
+		if not p.sprinting and moved < 12.0 * delta and int(st.silent_n) < Rules.SILENT_MAX and elapsed >= float(st.silent_ready):
+			st.silent_m = float(st.silent_m) + moved
+			if st.silent_m >= Rules.SILENT_METRES:
+				st.silent_m = 0.0
+				st.silent_ready = elapsed + Rules.SILENT_COOLDOWN
+				st.silent_n = int(st.silent_n) + 1
+				_style(id, "silent")
 	else:
 		st.unseen_run = 0.0
-		if st.seen:
-			st.silent_m = 0.0
+		st.silent_m = 0.0  # seen, hiding, chased, back in class, on a pass or walking back from detention: start over
 	# Opening quest: answered the register this period, and now out of the room.
 	if int(st.present_period) == int(world.period) and out:
 		_complete(id, "slip")
@@ -2971,21 +2991,44 @@ func _report_moments() -> void:
 				% [_name(id), times.size() - 2, int(elapsed), int(longest), quiet])
 
 
-## Heat: time, catches and fire alarms make the school stricter. New patrols come on duty.
+## A real catch or a fire alarm: the school takes note. A pile-up (everyone caught in one rush) counts once.
+func _trouble_event() -> void:
+	if elapsed - _trouble_at < Rules.HEAT_TROUBLE_GAP:
+		return
+	_trouble_at = elapsed
+	_trouble += 1
+	_heat_ok_at = maxf(_heat_ok_at, elapsed + 4.0)  # let the DETENTION toast and the "X caught" PA land first
+
+
+## Heat: the clock, plus one level once there has been trouble twice, makes the school stricter. It rises one
+## level at a time, each lasting at least HEAT_MIN_DWELL, so every level is felt. New patrols come on duty.
 func _update_heat(quiet: bool) -> void:
 	var floor_heat := 2 if _event() == "inspection" else 1
-	var heat := Rules.heat_for(elapsed / maxf(1.0, round_time), int(world.heat_bumps), floor_heat)
+	var frac := elapsed / maxf(1.0, round_time)
+	var want := Rules.heat_for(frac, _trouble, floor_heat)
 	if _fresh():
-		heat = mini(heat, 2)
+		want = mini(want, 2)
 	if OS.get_cmdline_user_args().has("--heat4"):  # dev
-		heat = 4
-	if heat > int(world.heat) or quiet:
-		var rose: bool = heat > int(world.heat)
-		world.heat = heat
-		if rose and not quiet:
-			_log(Rules.HEAT_NAMES[heat].to_upper())
-			_fx_all("heat", Vector3.ZERO, str(heat))
-			_announce(PA_HEAT[clampi(heat, 1, 4)])
+		want = 4
+	if _heat_ramp > 0.0:  # dev: a level every S seconds, so every look and sound can be checked
+		want = maxi(want, mini(4, 1 + int(elapsed / _heat_ramp)))
+	var cur := int(world.heat)
+	if quiet:
+		world.heat = want
+	elif want > cur and (elapsed >= _heat_ok_at or _heat_ramp > 0.0):
+		cur += 1  # one level at a time
+		world.heat = cur
+		_heat_ok_at = elapsed + Rules.HEAT_MIN_DWELL
+		var why := "trouble" if _trouble >= 2 and Rules.heat_for(frac, 0, floor_heat) < cur else "time"
+		_log("HEAT %d: %s. %s" % [cur, Rules.HEAT_TAGS[cur], Rules.HEAT_NOTES[cur]])
+		_fx_all("heat", Vector3.ZERO, "%d|%s" % [cur, why])  # reliable one-shot, a few bytes
+		_heat_pa_text = str(PA_HEAT[cur])  # not at once: the PA box sits over the middle of the banner
+		_heat_pa_at = elapsed + HEAT_PA_DELAY
+		print("[heat] level %d at %d s (%s), trouble %d" % [cur, int(elapsed), why, _trouble])
+	if _heat_pa_at >= 0.0 and elapsed >= _heat_pa_at:
+		_heat_pa_at = -1.0
+		if not round_over:
+			_announce(_heat_pa_text)
 	for k in range(_pending_staff.size() - 1, -1, -1):
 		if int(_pending_staff[k][0]) <= int(world.heat):
 			(_pending_staff[k][1] as Callable).call()
@@ -3615,7 +3658,6 @@ func _catch(b: Dictionary, id: int, reason := "") -> void:
 	st.question = {}
 	st.catches = int(st.catches) + 1
 	st.peak = false
-	world.heat_bumps = int(world.heat_bumps) + 1
 	if Rules.warning_only(Network.current_map, int(st.catches)):
 		# First Day, first catch: a telling-off and back to your seat.
 		st.warnings = int(st.warnings) + 1
@@ -3629,6 +3671,7 @@ func _catch(b: Dictionary, id: int, reason := "") -> void:
 		_teleport(id, st.seat, 0.0)
 		_end_chase(b)
 		return
+	_trouble_event()  # a First Day warning (above) is a gentle catch and does not count
 	st.state = "detention"
 	st.caught += 1
 	_moment("caught", id)
