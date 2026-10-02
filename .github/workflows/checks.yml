@@ -45,6 +45,26 @@ jobs:
           timeout 120 "$GODOT" --headless --path . -s scripts/voice_codec_test.gd 2>&1 | tee codec.log || true
           grep -q "\[voice\] OK" codec.log || { echo "::error::Voice codec test failed"; exit 1; }
 
+      - name: Mic scale
+        run: |
+          timeout 120 "$GODOT" --headless --path . -s scripts/mic_scale_test.gd 2>&1 | tee mic.log || true
+          grep -q "\[mic\] OK" mic.log || { echo "::error::Mic scale test failed"; exit 1; }
+
+      - name: Mic gate
+        run: |
+          timeout 120 "$GODOT" --headless --path . -s scripts/mic_gate_test.gd 2>&1 | tee micgate.log || true
+          grep -q "\[mic-gate\] OK" micgate.log || { echo "::error::Mic gate test failed"; exit 1; }
+
+      - name: Heat pacing
+        run: |
+          timeout 120 "$GODOT" --headless --path . -s scripts/heat_curve_test.gd 2>&1 | tee heat.log || true
+          grep -q "\[heat\] OK" heat.log || { echo "::error::Heat pacing test failed"; exit 1; }
+
+      - name: Display settings migration
+        run: |
+          timeout 120 "$GODOT" --headless --path . -s scripts/display_test.gd 2>&1 | tee display.log || true
+          grep -q "\[display\] OK" display.log || { echo "::error::Display settings test failed"; exit 1; }
+
       - name: Smoke test a whole round (bot player, 5 minutes at 5x speed)
         run: |
           timeout 150 "$GODOT" --headless --path . -- --host --autostart=1 --minutes=5 --speed=5 --name=CI --map=0 --rounds=5 --quit-at-end \
@@ -52,6 +72,7 @@ jobs:
           grep -q "Class has started" round.log || { echo "::error::The round never started"; exit 1; }
           grep -q "The final bell rang" round.log || { echo "::error::The round never reached the final bell"; exit 1; }
           grep -q "staff heard CI" round.log || { echo "::error::Staff never heard the test voice"; exit 1; }
+          grep -q "\[heat\] level 4" round.log || { echo "::error::The heat never reached lockdown"; exit 1; }
           if grep -E "SCRIPT ERROR" round.log; then
             echo "::error::Script errors during the round"
             exit 1
