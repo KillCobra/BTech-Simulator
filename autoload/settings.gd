@@ -222,6 +222,7 @@ func window_ready() -> void:
 	if _launch_windowed():
 		return
 	await _show_mode()
+	print("[display] now window=%s mode=%d" % [DisplayServer.window_get_size(), DisplayServer.window_get_mode()])
 
 
 ## Makes the window match `fullscreen`. Borderless FULLSCREEN on both OSes (a native Space on macOS; on
