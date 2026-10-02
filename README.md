@@ -38,7 +38,7 @@ WASD move · Shift sprint · Ctrl/C crouch · Space jump · E interact / pick up
 · Left-click: shove (staff or a friend; hold to charge a basketball shot) · 1-3 use items (1-4 pick an excuse)
 · Q phone · V push to talk (if you picked push-to-talk) · B quick shout (no mic needed, then 1-4)
 · H raise hand (ask a question) · G throw paper ball (distraction) · T ping · R answer attendance for a friend
-· M big map (F: switch floor) · Tab scores · F12 screenshot · Esc menu · F10 leave
+· M big map (F: switch floor) · Tab scores · F12 screenshot · F11 or Alt+Enter fullscreen (Cmd+Ctrl+F on Mac) · Esc menu · F10 leave
 
 Your first round only shows the basics (move, crouch, jump, E, shove); the rest is explained the first time it's
 useful, and the key line at the bottom grows with the rounds you've played.
@@ -53,8 +53,10 @@ say): a whisper carries a metre or two, talking about 8 m, a yell down the corri
 never through floors). Talk in class and the teacher turns round from the board ("Who's talking?!"); talk
 where you shouldn't be and staff come to look; talk in a locker and they know exactly where you are. The HUD
 shows how far you can be heard right now.
-Settings > VOICE: open mic / push-to-talk (V) / mic off, the microphone, the open-mic threshold (with a live
-meter) and your friends' volume. Use headphones. No mic? B then 1-4 shouts "Psst!", "RUN!", "Over here!" or
+Settings > VOICE & MIC: open mic / push-to-talk (V) / mic off, the microphone, mic sensitivity 1-10 (live dB meter and
+AUTO-SET: stay quiet, then talk, and it picks the level for your mic and room; also the MIC button in the lobby)
+and your friends' volume. A single key click or thump never opens the mic (it needs 60 ms of voice) and the
+first syllable isn't clipped. Use headphones. No mic? B then 1-4 shouts "Psst!", "RUN!", "Over here!" or
 "HELP!" (staff hear those too).
 
 ## Maps
@@ -100,6 +102,7 @@ you're on is also shown faintly at the top of the screen (it lights up when you 
   binary search), Chemistry (repeat the recipe · element symbols · acid or base?). Up to +100 points, a missed test
   is -50. You get 8 s to sit down once it starts (5 s if you walk in late); after that a teacher who sees you on
   your feet sends you to detention. A photo of the exam paper (staff room) gets you full marks on your next test.
+  A perfect 100/100 earns that subject's merit badge (they stack): a pop-up with the rosette, a shelf under your quest list.
 - **Raise your hand (H):** in your own class, pick a question: intelligent (the teacher likes you: less suspicion,
   calms down faster, Rs 5), quirky (the class laughs) or mischievous (the teacher rants at the board for a while,
   everyone's chance to sneak out, but 30% of the time they see through it: a strike).
@@ -163,8 +166,11 @@ at the canteen has something to say about your wallet, your detentions and the m
 - **Samosas:** bribe staff up close, throw one at staff further off (they stop to eat), or splat a friend.
 - **Pranks:** hold a friend's locker or stall shut for 3 s (E); a paper ball landing on a friend makes staff look.
 - **Controls:** Settings → CONTROLS to rebind any key.
-- **HUD size:** Settings → HUD SIZE: 1 Small, 2 Normal (default), 3 Large. The whole UI also scales with the window
-  (it's laid out for 1280 x 880 and opens at 1440 x 990).
+- **HUD size:** Settings → HUD SIZE: 1 Small, 2 Normal (default), 3 Large. The game starts fullscreen; Settings →
+  DISPLAY (or F11 / Alt+Enter) switches to a window and picks its size (only sizes that fit your screen are listed),
+  remembered between launches. The UI is laid out for 1280 x 880 and scales with the window.
+- **Danger vignette:** Settings → DANGER VIGNETTE (0% off, 100% default, up to 200%): how strongly the screen edges
+  blur, darken and turn red as suspicion rises and when you are chased. The HUD panels are never blurred.
 
 ## How to bunk
 - Stay near your seat while your teacher faces the class; move when they turn to the board.
@@ -214,12 +220,18 @@ at the canteen has something to say about your wallet, your detentions and the m
 - **Quest chain:** every round starts with the same opening quest (answer the register, then slip out of class),
   then a medium one (co-op ones with friends about: boost a friend, answer the register for a friend), then a risky
   one (the exam paper, the principal's car). Finish all three: +200 and 40 s to walk out through a gate.
-- **Heat** rises through the round (and with every catch or fire alarm): 1 teachers only, 2 the prefect and
-  caretaker start patrolling, 3 sharper CCTV plus the proctor and vice principal upstairs, 4 lockdown (no chai
-  breaks, everyone jumpier). Shown under your suspicion meter.
-- **Style:** CLOSE CALL (get out of sight after passing 80% suspicion), SILENT (25 m out of class unseen), SHOOK
-  THEM OFF (lose a chaser), PROXY, QUEST: a pop-up and a few points each.
-- **About to be spotted:** the screen edge glows towards whoever is watching and a blip speeds up.
+- **Heat** rises through the round, one level at a time, never down: by the clock at 25% / 55% / 80% of the round
+  (5 min: 1:15 / 2:45 / 4:00), and two separate catches or fire alarms (at least 25 s apart) make the school one level
+  stricter than the clock, never more, so lockdown never comes before 55% of the round. A First Day warning does not
+  count. 1 teachers only, 2 the prefect and caretaker start patrolling, 3 sharper CCTV (its LEDs blink faster) plus the
+  proctor and vice principal upstairs, 4 lockdown (staff spot you faster, no chai breaks). Every rise shows a banner
+  with what changed, flashes the screen edge and plays a low stinger; the light turns warmer and redder, the colour
+  drains a little and the PA says what is new (a few seconds later, once the banner has gone). Lockdown adds a klaxon, a steady edge glow and a low drone. Shown under
+  your suspicion meter.
+- **Style:** CLOSE CALL (get out of sight after passing 80% suspicion), SNEAKY (40 m on foot, out of class and
+  unseen; at most 4 a round, 45 s apart), SHOOK THEM OFF (lose a chaser), PROXY, QUEST: a pop-up and a few points each.
+- **About to be spotted:** the screen edge glows towards whoever is watching and a blip speeds up; the edges blur,
+  darken and redden as suspicion rises (Settings → DANGER VIGNETTE).
 - **Round events** (6 in 10 rounds): Surprise Inspection, Principal's Birthday (cake at the canteen halfway),
   Rain, Power Cut (no CCTV, dark corridors), Exam Week (tests sooner, double marks).
 - **Daily challenge** (parked for now; dev: `--map=-2`): the same map, event and rule for everyone that day (no
@@ -249,15 +261,21 @@ Dev flags (after `--`): `--host --autostart=1 --minutes=M --map=0..4 (-1 random)
 `--at=x,z` · `--walk=x,z;!interact;!use1;!proxy;!wait2;!stand;!coin;!counter;!buy:samosa;!give10;!giveslot0;!bump;...`
 (test bot) · `--autoready` · `--no-staff` · `--trace` · `--cam=x,y,z,tx,ty,tz` · `--shot=file.png --shot_delay=S` ·
 `--map=-2` (daily) · `--event=inspection|birthday|rain|power_cut|exam_week|none` · `--mode=race` · `--rule=no_pass|broke|speed` ·
-`--heat4` · `--stylepop` · `--nohud` (clean plates for trailers) · `--warn` · `--spectate` · `--bell` · `--fresh-profile` (dev runs use `profile_test.cfg`) ·
+`--heat4` · `--heat-ramp=S` (heat rises one level every S seconds, to see and hear every level) · `--stylepop` · `--badgepop` (the full-marks pop-up) · `--nohud` (clean plates for trailers) · `--warn` · `--danger=0..1` (force the danger vignette strength, for screenshots) · `--spectate` · `--bell` · `--fresh-profile` (dev runs use `profile_test.cfg`) ·
 `--bigmap` · `--quit-at-end` · `--phone=-1..1` (home / Navigate / Help Out) · `--helpbot` · `--hudsize=1..3` · `--navshow` · `--shop` · `--scan` · `--ask` · `--typebot [--typebot-wrong]` · `--jail=S` · `--exam=0..3 --variant=0..2` ·
 `--rounds=N` (pretend to have played N rounds) · `--fresh` (a first-round ruleset) · `--question=S` (the nearest staff grabs and questions
 the host after S s) · `--voice-test=AMP` (a synthetic voice instead of the mic, so staff hearing works headless) · `--voice-echo` ·
-`--no-hear` · `--cctv` (escaped: look through a camera) ·
+`--no-hear` · `--cctv` (escaped: look through a camera) · `--mic-trace` (print the mic level and gate every second) ·
+`--settings --voicepage` (open the settings on the VOICE & MIC page, for screenshots) ·
 bot actions `!ask:0..2` `!examphoto` `!excuse0..3` `!goto:KIND` (stand by the nearest bucket / extinguisher / trolley / any interactable)
 
+Dev runs (the editor, anything after `--`, or Godot's `--windowed`) never go fullscreen at launch and leave the saved
+choice alone, so screenshots, trailer plates and two instances on one screen keep their window; F11 still works in
+them. To test the fullscreen launch itself, run an exported build (any run from a Godot editor binary counts as a
+dev run), with `settings.cfg` deleted for the first-launch case. Headless runs never touch the window.
+
 Every round prints `[moments]` at the final bell: how often something happened to each player and the longest
-stretch where nothing did (the thing to design away). Voice codec check: `godot --headless --path . -s scripts/voice_codec_test.gd`.
+stretch where nothing did (the thing to design away). Voice codec check: `godot --headless --path . -s scripts/voice_codec_test.gd`. Mic scale check: `godot --headless --path . -s scripts/mic_scale_test.gd`; open-mic gate check (click guard, pre-roll, push-to-talk): `-s scripts/mic_gate_test.gd`. Heat pacing check: `godot --headless --path . -s scripts/heat_curve_test.gd`. Display settings migration check (old `settings.cfg` flips to fullscreen once): `-s scripts/display_test.gd`.
 Networking note: the Director's small `world` dict is sent unreliably and must stay under the 1350-byte MTU (Godot
 drops the whole update otherwise); anything bigger or rarer goes in `things` (reliable, on change). Test two
 players with `--session-host=NAME` in one game and `--session-join=NAME --autoready` in another.
